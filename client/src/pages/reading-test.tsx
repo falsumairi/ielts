@@ -70,15 +70,21 @@ export default function ReadingTest() {
     enabled: !!testId && !isNaN(testId),
   });
   
-  // Fetch questions
+  // Fetch questions with randomization
   const { data: questions, isLoading: isLoadingQuestions } = useQuery<Question[]>({
-    queryKey: ["/api/tests", testId, "questions"],
+    queryKey: ["/api/tests", testId, "questions", "randomized"],
     queryFn: async () => {
-      const res = await fetch(`/api/tests/${testId}/questions`);
+      // Use randomization for new test sessions only
+      const shouldRandomize = !session || session.status === 'not_started';
+      const url = `/api/tests/${testId}/questions${shouldRandomize ? '?randomize=true' : ''}`;
+      
+      const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch questions");
       return res.json();
     },
     enabled: !!testId && !isNaN(testId),
+    // Don't refetch when session changes, keep questions stable for a session
+    staleTime: Infinity,
   });
   
   // Initialize session if needed

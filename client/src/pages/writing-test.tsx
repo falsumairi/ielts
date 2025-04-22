@@ -38,15 +38,21 @@ export default function WritingTest() {
     enabled: !!testId && !isNaN(testId),
   });
   
-  // Fetch questions (writing tasks)
+  // Fetch questions (writing tasks) with randomization
   const { data: questions, isLoading: isLoadingQuestions } = useQuery<Question[]>({
-    queryKey: ["/api/tests", testId, "questions"],
+    queryKey: ["/api/tests", testId, "questions", "randomized"],
     queryFn: async () => {
-      const res = await fetch(`/api/tests/${testId}/questions`);
+      // Use randomization for new attempts to ensure different questions each time
+      const shouldRandomize = !attemptId || attemptId <= 0;
+      const url = `/api/tests/${testId}/questions${shouldRandomize ? '?randomize=true' : ''}`;
+      
+      const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch questions");
       return res.json();
     },
     enabled: !!testId && !isNaN(testId),
+    // Prevent refetching which would randomize again during the session
+    staleTime: Infinity,
   });
   
   // Fetch existing answers (if returning to test)
