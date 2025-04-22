@@ -11,6 +11,7 @@ import {
 import { Bell, BookOpen, ChevronDown, GraduationCap, LineChart, Menu, Settings, UserCircle } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
+import { ThemeToggle } from "@/components/ThemeProvider";
 import { UserRole } from "@shared/schema";
 
 interface HeaderProps {
@@ -62,6 +63,8 @@ export default function Header({ toggleSidebar }: HeaderProps) {
         </nav>
 
         <div className="flex items-center space-x-4">
+          <ThemeToggle />
+          
           <Button variant="ghost" size="icon" className="relative text-neutral-dark hover:bg-neutral-bg transition-all" aria-label="Notifications">
             <Bell className="h-5 w-5" />
             <span className="absolute top-1 right-1 block h-2 w-2 rounded-full bg-destructive animate-pulse"></span>
