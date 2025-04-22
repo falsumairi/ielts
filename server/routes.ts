@@ -5,6 +5,7 @@ import { setupAuth } from "./auth";
 import { TestModule, UserRole } from "@shared/schema";
 import helmet from "helmet";
 import { z } from "zod";
+import { sendEmail, generateOTP, emailTemplates } from "./utils/email";
 
 // Middleware to check if user is authenticated
 const isAuthenticated = (req: Request, res: Response, next: Function) => {
@@ -506,6 +507,221 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
     });
+  });
+
+  // Email verification and password reset routes
+  // Store OTPs with expiration time (60 seconds)
+  const otpStore = new Map<string, { otp: string, expires: number, userId?: number }>();
+  
+  // Send verification email
+  app.post("/api/email/verify", async (req, res) => {
+    try {
+      const emailSchema = z.object({
+        email: z.string().email("Invalid email format"),
+      });
+
+      const { email } = emailSchema.parse(req.body);
+      
+      // Check if email exists in the system
+      const user = await storage.getUserByEmail(email);
+      if (!user) {
+        // For security reasons, don't reveal whether email exists
+        return res.status(200).json({ 
+          message: "If your email is registered in our system, you will receive a verification code shortly."
+        });
+      }
+      
+      // Generate OTP
+      const otp = generateOTP(6);
+      const expiryTime = Date.now() + 60000; // 60 seconds from now
+      
+      // Store OTP with email as key
+      otpStore.set(email, {
+        otp,
+        expires: expiryTime,
+        userId: user.id
+      });
+      
+      // Send verification email
+      const template = emailTemplates.verification(otp);
+      const emailSent = await sendEmail({
+        to: email,
+        from: "noreply@ieltsexam.com",
+        subject: template.subject,
+        html: template.html,
+        text: template.text
+      });
+      
+      if (!emailSent) {
+        return res.status(500).json({ 
+          error: "Failed to send verification email. Please try again later."
+        });
+      }
+      
+      res.status(200).json({ 
+        message: "Verification code sent to your email.",
+        expiresIn: 60 // seconds
+      });
+    } catch (error) {
+      res.status(400).json({ 
+        error: error instanceof Error ? error.message : "Invalid request"
+      });
+    }
+  });
+  
+  // Verify OTP code
+  app.post("/api/email/verify/code", async (req, res) => {
+    try {
+      const verifySchema = z.object({
+        email: z.string().email("Invalid email format"),
+        otp: z.string().length(6, "OTP must be 6 digits"),
+      });
+
+      const { email, otp } = verifySchema.parse(req.body);
+      
+      // Check if OTP exists and is valid
+      const storedData = otpStore.get(email);
+      
+      if (!storedData) {
+        return res.status(400).json({ error: "Invalid verification code or email." });
+      }
+      
+      // Check if OTP has expired
+      if (Date.now() > storedData.expires) {
+        // Remove expired OTP
+        otpStore.delete(email);
+        return res.status(400).json({ error: "Verification code has expired. Please request a new one." });
+      }
+      
+      // Check if OTP matches
+      if (storedData.otp !== otp) {
+        return res.status(400).json({ error: "Invalid verification code." });
+      }
+      
+      // Mark user as verified if needed
+      if (storedData.userId) {
+        await storage.updateUserVerificationStatus(storedData.userId, true);
+      }
+      
+      // Remove used OTP
+      otpStore.delete(email);
+      
+      res.status(200).json({ 
+        message: "Email verification successful", 
+        verified: true 
+      });
+    } catch (error) {
+      res.status(400).json({ 
+        error: error instanceof Error ? error.message : "Invalid request"
+      });
+    }
+  });
+  
+  // Request password reset
+  app.post("/api/password/reset/request", async (req, res) => {
+    try {
+      const resetSchema = z.object({
+        email: z.string().email("Invalid email format"),
+      });
+
+      const { email } = resetSchema.parse(req.body);
+      
+      // Check if email exists in the system
+      const user = await storage.getUserByEmail(email);
+      if (!user) {
+        // For security reasons, don't reveal whether email exists
+        return res.status(200).json({ 
+          message: "If your email is registered in our system, you will receive a password reset code shortly."
+        });
+      }
+      
+      // Generate OTP
+      const otp = generateOTP(6);
+      const expiryTime = Date.now() + 60000; // 60 seconds from now
+      
+      // Store OTP with email as key
+      otpStore.set(email, {
+        otp,
+        expires: expiryTime,
+        userId: user.id
+      });
+      
+      // Send password reset email
+      const template = emailTemplates.passwordReset(otp);
+      const emailSent = await sendEmail({
+        to: email,
+        from: "noreply@ieltsexam.com",
+        subject: template.subject,
+        html: template.html,
+        text: template.text
+      });
+      
+      if (!emailSent) {
+        return res.status(500).json({ 
+          error: "Failed to send password reset email. Please try again later."
+        });
+      }
+      
+      res.status(200).json({ 
+        message: "Password reset code sent to your email.",
+        expiresIn: 60 // seconds
+      });
+    } catch (error) {
+      res.status(400).json({ 
+        error: error instanceof Error ? error.message : "Invalid request"
+      });
+    }
+  });
+  
+  // Reset password with OTP
+  app.post("/api/password/reset", async (req, res) => {
+    try {
+      const resetSchema = z.object({
+        email: z.string().email("Invalid email format"),
+        otp: z.string().length(6, "OTP must be 6 digits"),
+        newPassword: z.string().min(8, "Password must be at least 8 characters long"),
+      });
+
+      const { email, otp, newPassword } = resetSchema.parse(req.body);
+      
+      // Check if OTP exists and is valid
+      const storedData = otpStore.get(email);
+      
+      if (!storedData) {
+        return res.status(400).json({ error: "Invalid reset code or email." });
+      }
+      
+      // Check if OTP has expired
+      if (Date.now() > storedData.expires) {
+        // Remove expired OTP
+        otpStore.delete(email);
+        return res.status(400).json({ error: "Reset code has expired. Please request a new one." });
+      }
+      
+      // Check if OTP matches
+      if (storedData.otp !== otp) {
+        return res.status(400).json({ error: "Invalid reset code." });
+      }
+      
+      // Reset password
+      if (storedData.userId) {
+        await storage.updateUserPassword(storedData.userId, newPassword);
+      } else {
+        return res.status(400).json({ error: "User not found." });
+      }
+      
+      // Remove used OTP
+      otpStore.delete(email);
+      
+      res.status(200).json({ 
+        message: "Password has been reset successfully. You can now log in with your new password.", 
+        success: true 
+      });
+    } catch (error) {
+      res.status(400).json({ 
+        error: error instanceof Error ? error.message : "Invalid request"
+      });
+    }
   });
 
   const httpServer = createServer(app);

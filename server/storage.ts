@@ -20,7 +20,10 @@ export interface IStorage {
   // Users
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  updateUserVerificationStatus(id: number, verified: boolean): Promise<User | undefined>;
+  updateUserPassword(id: number, newPassword: string): Promise<User | undefined>;
   
   // Tests
   getAllTests(): Promise<Test[]>;
@@ -121,6 +124,40 @@ export class MemStorage implements IStorage {
     return Array.from(this.users.values()).find(
       (user) => user.username === username,
     );
+  }
+  
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    return Array.from(this.users.values()).find(
+      (user) => user.email === email,
+    );
+  }
+  
+  async updateUserVerificationStatus(id: number, verified: boolean): Promise<User | undefined> {
+    const user = this.users.get(id);
+    if (!user) return undefined;
+    
+    const updatedUser: User = {
+      ...user,
+      verified: verified
+    };
+    
+    this.users.set(id, updatedUser);
+    return updatedUser;
+  }
+  
+  async updateUserPassword(id: number, newPassword: string): Promise<User | undefined> {
+    const user = this.users.get(id);
+    if (!user) return undefined;
+    
+    // In a real app, we would hash the password here
+    // For this prototype, we'll use the raw password
+    const updatedUser: User = {
+      ...user,
+      password: newPassword
+    };
+    
+    this.users.set(id, updatedUser);
+    return updatedUser;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
