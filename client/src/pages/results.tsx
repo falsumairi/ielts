@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
@@ -53,25 +53,46 @@ export default function Results() {
     enabled: !!attempts,
   });
 
-  // Combine test data with attempts
-  const attemptsWithTestDetails = attempts?.map(attempt => {
-    const test = tests?.find(test => test.id === attempt.testId);
-    return {
-      ...attempt,
-      test
-    };
-  }) || [];
+  // Combine test data with attempts (only if both are loaded)
+  const attemptsWithTestDetails = React.useMemo(() => {
+    if (!attempts || !tests) return [];
+    
+    return attempts.map(attempt => {
+      const test = tests.find(test => test.id === attempt.testId);
+      return {
+        ...attempt,
+        test
+      };
+    });
+  }, [attempts, tests]);
 
   // Sort attempts by most recent first
-  const sortedAttempts = [...(attemptsWithTestDetails || [])].sort(
-    (a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
-  );
+  const sortedAttempts = React.useMemo(() => {
+    return [...attemptsWithTestDetails].sort(
+      (a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
+    );
+  }, [attemptsWithTestDetails]);
 
   // Filter attempts by module
-  const readingAttempts = sortedAttempts.filter(a => a.test?.module === "reading");
-  const listeningAttempts = sortedAttempts.filter(a => a.test?.module === "listening");
-  const writingAttempts = sortedAttempts.filter(a => a.test?.module === "writing");
-  const speakingAttempts = sortedAttempts.filter(a => a.test?.module === "speaking");
+  const readingAttempts = React.useMemo(() => 
+    sortedAttempts.filter(a => a.test?.module === "reading"),
+    [sortedAttempts]
+  );
+  
+  const listeningAttempts = React.useMemo(() => 
+    sortedAttempts.filter(a => a.test?.module === "listening"),
+    [sortedAttempts]
+  );
+  
+  const writingAttempts = React.useMemo(() => 
+    sortedAttempts.filter(a => a.test?.module === "writing"),
+    [sortedAttempts]
+  );
+  
+  const speakingAttempts = React.useMemo(() => 
+    sortedAttempts.filter(a => a.test?.module === "speaking"),
+    [sortedAttempts]
+  );
 
   // Format date
   const formatDate = (dateString: string) => {
