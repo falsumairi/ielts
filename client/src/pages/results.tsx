@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import Header from "@/components/layout/Header";
 import Sidebar from "@/components/layout/Sidebar";
@@ -10,7 +10,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CalendarDays, Clock, BookOpen, Headphones, Pen, Mic, BarChart2, ArrowRight, Loader2 } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Progress } from "@/components/ui/progress";
+import { CalendarDays, Clock, BookOpen, Headphones, Pen, Mic, BarChart2, ArrowRight, Loader2, ChevronDown, ChevronUp, ClipboardList } from "lucide-react";
+import { WRITING_CRITERIA, SPEAKING_CRITERIA } from "@/hooks/use-score-calculation";
 
 interface Attempt {
   id: number;
@@ -20,6 +23,8 @@ interface Attempt {
   endTime: string | null;
   status: string;
   score: number | null;
+  bandScore?: number | null;
+  criteriaScores?: Record<string, number> | null;
   createdAt: string;
   test?: {
     title: string;
@@ -310,10 +315,13 @@ export default function Results() {
 }
 
 interface TestHistoryTableProps {
-  attempts: any[];
+  attempts: Attempt[];
 }
 
 function TestHistoryTable({ attempts }: TestHistoryTableProps) {
+  const [selectedAttempt, setSelectedAttempt] = useState<Attempt | null>(null);
+  const [showScoreDetails, setShowScoreDetails] = useState(false);
+  
   // Format date
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -353,6 +361,31 @@ function TestHistoryTable({ attempts }: TestHistoryTableProps) {
     }
   };
   
+  // View score details
+  const viewScoreDetails = (attempt: Attempt) => {
+    setSelectedAttempt(attempt);
+    setShowScoreDetails(true);
+  };
+  
+  // Render score based on module type
+  const renderScore = (attempt: Attempt) => {
+    if (attempt.score === null) {
+      return attempt.status === "completed" ? "Pending" : "-";
+    }
+    
+    // Return band score if available
+    if (attempt.bandScore) {
+      return (
+        <div className="flex flex-col">
+          <span className="font-bold text-primary">{attempt.bandScore}</span>
+          <span className="text-xs text-muted-foreground">Band Score</span>
+        </div>
+      );
+    }
+    
+    return attempt.score;
+  };
+  
   // Check if attempts exists and has items
   if (!attempts || attempts.length === 0) {
     return (
@@ -370,63 +403,152 @@ function TestHistoryTable({ attempts }: TestHistoryTableProps) {
   }
   
   return (
-    <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-      <div className="overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Test</TableHead>
-              <TableHead>Module</TableHead>
-              <TableHead>Date</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Score</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {attempts.map((attempt) => (
-              <TableRow key={attempt.id}>
-                <TableCell className="font-medium">{attempt.test?.title || 'Unknown Test'}</TableCell>
-                <TableCell>
-                  <div className="flex items-center">
-                    {getModuleIcon(attempt.test?.module || '')}
-                    <span className="ml-2 capitalize">{attempt.test?.module}</span>
+    <>
+      {/* Score Details Dialog */}
+      <Dialog open={showScoreDetails} onOpenChange={setShowScoreDetails}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Score Details</DialogTitle>
+            <DialogDescription>
+              {selectedAttempt && (
+                <span>
+                  {selectedAttempt.test?.title} ({formatDate(selectedAttempt.startTime)})
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedAttempt && (
+            <div className="py-4">
+              <div className="flex items-center mb-6">
+                <div className="h-14 w-14 rounded-full bg-primary/10 flex items-center justify-center">
+                  <BarChart2 className="h-7 w-7 text-primary" />
+                </div>
+                <div className="ml-4">
+                  <div className="text-3xl font-bold">
+                    {selectedAttempt.bandScore || (selectedAttempt.score !== null ? selectedAttempt.score : "-")}
                   </div>
-                </TableCell>
-                <TableCell>{formatDate(attempt.startTime)}</TableCell>
-                <TableCell>{getStatusBadge(attempt.status)}</TableCell>
-                <TableCell>
-                  {attempt.score !== null ? attempt.score : 
-                   attempt.status === "completed" ? "Pending" : "-"}
-                </TableCell>
-                <TableCell className="text-right">
-                  {attempt.status === "in_progress" ? (
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      asChild
-                    >
-                      <Link href={`/tests/${attempt.test?.module}/${attempt.testId}?attempt=${attempt.id}`}>
-                        Continue
-                      </Link>
-                    </Button>
-                  ) : (
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      asChild
-                    >
-                      <Link href={`/tests/${attempt.test?.module}/${attempt.testId}?attempt=${attempt.id}&view=true`}>
-                        View
-                      </Link>
-                    </Button>
-                  )}
-                </TableCell>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedAttempt.bandScore ? "IELTS Band Score" : "Raw Score"}
+                  </p>
+                </div>
+              </div>
+              
+              {selectedAttempt.criteriaScores && (
+                <div className="space-y-4">
+                  <h4 className="font-medium text-sm mb-2">Scoring Criteria</h4>
+                  
+                  {/* Get the appropriate criteria based on module type */}
+                  {(selectedAttempt.test?.module === "writing" ? WRITING_CRITERIA : 
+                    selectedAttempt.test?.module === "speaking" ? SPEAKING_CRITERIA : []).map((criterion) => {
+                    const criterionScore = selectedAttempt.criteriaScores?.[criterion.name] || 0;
+                    
+                    return (
+                      <div key={criterion.name} className="space-y-1">
+                        <div className="flex justify-between">
+                          <span className="text-sm font-medium">{criterion.name}</span>
+                          <span className="text-sm font-medium">{criterionScore}</span>
+                        </div>
+                        <Progress value={criterionScore * 10} className="h-2" />
+                        <p className="text-xs text-muted-foreground">{criterion.description}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              
+              {(selectedAttempt.test?.module === "reading" || selectedAttempt.test?.module === "listening") && selectedAttempt.score !== null && (
+                <div className="pt-4">
+                  <h4 className="font-medium text-sm mb-4">Score Distribution</h4>
+                  <div className="bg-neutral-50 rounded-lg p-4">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm font-medium">Raw Score</span>
+                      <span className="text-sm font-medium">{selectedAttempt.score}</span>
+                    </div>
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm font-medium">Band Score</span>
+                      <span className="text-sm font-medium">{selectedAttempt.bandScore}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-medium">Maximum Possible</span>
+                      <span className="text-sm font-medium">9.0</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    
+      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Test</TableHead>
+                <TableHead>Module</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Score</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {attempts.map((attempt) => (
+                <TableRow key={attempt.id}>
+                  <TableCell className="font-medium">{attempt.test?.title || 'Unknown Test'}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center">
+                      {getModuleIcon(attempt.test?.module || '')}
+                      <span className="ml-2 capitalize">{attempt.test?.module}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell>{formatDate(attempt.startTime)}</TableCell>
+                  <TableCell>{getStatusBadge(attempt.status)}</TableCell>
+                  <TableCell>
+                    {renderScore(attempt)}
+                  </TableCell>
+                  <TableCell className="text-right space-x-2">
+                    {attempt.status === "in_progress" ? (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        asChild
+                      >
+                        <Link href={`/tests/${attempt.test?.module}/${attempt.testId}?attempt=${attempt.id}`}>
+                          Continue
+                        </Link>
+                      </Button>
+                    ) : (
+                      <>
+                        {attempt.score !== null && (
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => viewScoreDetails(attempt)}
+                          >
+                            Details
+                          </Button>
+                        )}
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          asChild
+                        >
+                          <Link href={`/tests/${attempt.test?.module}/${attempt.testId}?attempt=${attempt.id}&view=true`}>
+                            View
+                          </Link>
+                        </Button>
+                      </>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
