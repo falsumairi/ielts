@@ -12,6 +12,9 @@ import createMemoryStore from "memorystore";
 
 const MemoryStore = createMemoryStore(session);
 
+// Define session store type
+type SessionStore = ReturnType<typeof createMemoryStore>;
+
 // Storage interface
 export interface IStorage {
   // Users
@@ -49,7 +52,7 @@ export interface IStorage {
   updateAnswer(id: number, isCorrect: boolean, score?: number, feedback?: string, gradedBy?: number): Promise<Answer | undefined>;
   
   // Session store
-  sessionStore: session.SessionStore;
+  sessionStore: SessionStore;
 }
 
 // In-memory storage implementation
@@ -66,7 +69,7 @@ export class MemStorage implements IStorage {
   currentPassageId: number;
   currentAttemptId: number;
   currentAnswerId: number;
-  sessionStore: session.SessionStore;
+  sessionStore: SessionStore;
 
   constructor() {
     this.users = new Map();
@@ -121,7 +124,14 @@ export class MemStorage implements IStorage {
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = this.currentUserId++;
-    const user: User = { ...insertUser, id, createdAt: new Date() };
+    // Add required role property with a default if not provided
+    const role = insertUser.role || UserRole.TEST_TAKER;
+    const user: User = { 
+      ...insertUser, 
+      id, 
+      role, // Ensure role is always defined
+      createdAt: new Date() 
+    };
     this.users.set(id, user);
     return user;
   }
@@ -141,7 +151,13 @@ export class MemStorage implements IStorage {
 
   async createTest(insertTest: InsertTest): Promise<Test> {
     const id = this.currentTestId++;
-    const test: Test = { ...insertTest, id, createdAt: new Date() };
+    const test: Test = { 
+      ...insertTest, 
+      id, 
+      description: insertTest.description || null,
+      active: insertTest.active || null,
+      createdAt: new Date() 
+    };
     this.tests.set(id, test);
     return test;
   }
@@ -157,7 +173,15 @@ export class MemStorage implements IStorage {
 
   async createQuestion(insertQuestion: InsertQuestion): Promise<Question> {
     const id = this.currentQuestionId++;
-    const question: Question = { ...insertQuestion, id, createdAt: new Date() };
+    const question: Question = { 
+      ...insertQuestion, 
+      id, 
+      options: insertQuestion.options || {},
+      correctAnswer: insertQuestion.correctAnswer || null,
+      audioPath: insertQuestion.audioPath || null,
+      passageIndex: insertQuestion.passageIndex || null,
+      createdAt: new Date() 
+    };
     this.questions.set(id, question);
     return question;
   }
@@ -198,6 +222,7 @@ export class MemStorage implements IStorage {
     const attempt: Attempt = { 
       ...insertAttempt, 
       id, 
+      status: insertAttempt.status || "in_progress", // Ensure status is always defined
       startTime: new Date(),
       endTime: null,
       score: null,
@@ -236,6 +261,9 @@ export class MemStorage implements IStorage {
     const answer: Answer = { 
       ...insertAnswer, 
       id, 
+      audioPath: insertAnswer.audioPath || null,
+      score: insertAnswer.score || null,
+      isCorrect: insertAnswer.isCorrect || null,
       gradedBy: null,
       feedback: null,
       createdAt: new Date() 

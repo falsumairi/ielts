@@ -93,17 +93,16 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             Speaking
           </Link>
           <div className="border-t border-gray-100 my-4"></div>
-          <Link href="/results">
-            <a
-              className={cn(
-                "flex items-center px-6 py-3 text-neutral-dark hover:text-primary transition",
-                location === "/results" && "sidebar-menu-item active"
-              )}
-              onClick={handleLinkClick}
-            >
-              <BarChart3 className="h-5 w-5 mr-3" />
-              My Results
-            </a>
+          <Link 
+            href="/results"
+            className={cn(
+              "flex items-center px-6 py-3 text-neutral-dark hover:text-primary transition",
+              location === "/results" && "sidebar-menu-item active"
+            )}
+            onClick={handleLinkClick}
+          >
+            <BarChart3 className="h-5 w-5 mr-3" />
+            My Results
           </Link>
 
           {user?.role === UserRole.ADMIN && (
@@ -112,56 +111,52 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               <div className="px-6 mb-2 text-xs font-semibold text-neutral-dark uppercase tracking-wider">
                 Admin
               </div>
-              <Link href="/admin">
-                <a
-                  className={cn(
-                    "flex items-center px-6 py-3 text-neutral-dark hover:text-primary transition",
-                    location === "/admin" && "sidebar-menu-item active"
-                  )}
-                  onClick={handleLinkClick}
-                >
-                  <BarChart3 className="h-5 w-5 mr-3" />
-                  Dashboard
-                </a>
+              <Link 
+                href="/admin"
+                className={cn(
+                  "flex items-center px-6 py-3 text-neutral-dark hover:text-primary transition",
+                  location === "/admin" && "sidebar-menu-item active"
+                )}
+                onClick={handleLinkClick}
+              >
+                <BarChart3 className="h-5 w-5 mr-3" />
+                Dashboard
               </Link>
-              <Link href="/admin/results">
-                <a
-                  className={cn(
-                    "flex items-center px-6 py-3 text-neutral-dark hover:text-primary transition",
-                    location === "/admin/results" && "sidebar-menu-item active"
-                  )}
-                  onClick={handleLinkClick}
-                >
-                  <BarChart3 className="h-5 w-5 mr-3" />
-                  Results
-                </a>
+              <Link 
+                href="/admin/results"
+                className={cn(
+                  "flex items-center px-6 py-3 text-neutral-dark hover:text-primary transition",
+                  location === "/admin/results" && "sidebar-menu-item active"
+                )}
+                onClick={handleLinkClick}
+              >
+                <BarChart3 className="h-5 w-5 mr-3" />
+                Results
               </Link>
             </>
           )}
 
-          <Link href="/settings">
-            <a
-              className={cn(
-                "flex items-center px-6 py-3 text-neutral-dark hover:text-primary transition",
-                location === "/settings" && "sidebar-menu-item active"
-              )}
-              onClick={handleLinkClick}
-            >
-              <Settings className="h-5 w-5 mr-3" />
-              Settings
-            </a>
+          <Link 
+            href="/settings"
+            className={cn(
+              "flex items-center px-6 py-3 text-neutral-dark hover:text-primary transition",
+              location === "/settings" && "sidebar-menu-item active"
+            )}
+            onClick={handleLinkClick}
+          >
+            <Settings className="h-5 w-5 mr-3" />
+            Settings
           </Link>
-          <Link href="/help">
-            <a
-              className={cn(
-                "flex items-center px-6 py-3 text-neutral-dark hover:text-primary transition",
-                location === "/help" && "sidebar-menu-item active"
-              )}
-              onClick={handleLinkClick}
-            >
-              <HelpCircle className="h-5 w-5 mr-3" />
-              Help & Support
-            </a>
+          <Link 
+            href="/help"
+            className={cn(
+              "flex items-center px-6 py-3 text-neutral-dark hover:text-primary transition",
+              location === "/help" && "sidebar-menu-item active"
+            )}
+            onClick={handleLinkClick}
+          >
+            <HelpCircle className="h-5 w-5 mr-3" />
+            Help & Support
           </Link>
         </nav>
       </aside>
