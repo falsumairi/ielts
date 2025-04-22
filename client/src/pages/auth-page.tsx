@@ -23,7 +23,8 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Loader2, BookOpen, Headphones, Pen, Mic } from "lucide-react";
+import { CheckCircle, GraduationCap, Loader2, BookOpen, Headphones, Pen, Mic, Globe, Award, Target } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
 
 // Login form schema
 const loginSchema = z.object({
@@ -95,17 +96,98 @@ export default function AuthPage() {
 
   if (user) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-border" />
+      <div className="flex-center min-h-screen bg-neutral-bg">
+        <div className="flex-col-center gap-3">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-neutral-dark">Redirecting to dashboard...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-neutral-bg py-8 flex items-center">
-      <div className="container grid lg:grid-cols-2 gap-8 max-w-6xl mx-auto px-4">
-        {/* Auth Forms */}
-        <div className="flex items-center justify-center">
+    <div className="min-h-screen bg-neutral-bg flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+      <div className="container-wide grid lg:grid-cols-2 gap-8 lg:gap-16 items-center">
+        {/* Brand and Hero Section - Appears first on mobile, second on desktop */}
+        <div className="flex flex-col order-1 lg:order-2 slide-up">
+          <div className="flex items-center mb-6">
+            <div className="h-12 w-12 rounded-xl bg-gradient-to-r from-primary to-secondary flex-center text-white text-xl font-bold mr-4">
+              <GraduationCap className="h-7 w-7" />
+            </div>
+            <h1 className="text-3xl md:text-4xl font-bold gradient-text">IELTS Exam Pro</h1>
+          </div>
+          
+          <div className="ielts-card bg-gradient-to-br from-white to-neutral-bg">
+            <h2 className="text-2xl font-bold mb-2">Complete IELTS Preparation</h2>
+            <p className="text-muted-foreground mb-8">
+              Comprehensive practice platform covering all four IELTS modules with expert-designed questions and detailed feedback.
+            </p>
+            
+            <div className="grid md:grid-cols-2 gap-6 mb-8">
+              <div className="flex flex-col space-y-5">
+                <div className="flex items-start">
+                  <div className="bg-primary/10 p-2 rounded-full mr-3 flex-shrink-0">
+                    <BookOpen className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-medium">Reading</h3>
+                    <p className="text-sm text-muted-foreground">Authentic passages with comprehensive questions</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-start">
+                  <div className="bg-secondary/10 p-2 rounded-full mr-3 flex-shrink-0">
+                    <Headphones className="h-5 w-5 text-secondary" />
+                  </div>
+                  <div>
+                    <h3 className="font-medium">Listening</h3>
+                    <p className="text-sm text-muted-foreground">Realistic audio with challenging comprehension tests</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex flex-col space-y-5">
+                <div className="flex items-start">
+                  <div className="bg-accent/10 p-2 rounded-full mr-3 flex-shrink-0">
+                    <Pen className="h-5 w-5 text-accent" />
+                  </div>
+                  <div>
+                    <h3 className="font-medium">Writing</h3>
+                    <p className="text-sm text-muted-foreground">Timed tasks with detailed scoring criteria</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-start">
+                  <div className="bg-primary/10 p-2 rounded-full mr-3 flex-shrink-0">
+                    <Mic className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-medium">Speaking</h3>
+                    <p className="text-sm text-muted-foreground">Simulated interviews with instant feedback</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="flex items-center">
+                <CheckCircle className="h-5 w-5 text-success mr-2 flex-shrink-0" />
+                <span className="text-sm">Detailed progress tracking and analytics</span>
+              </div>
+              <div className="flex items-center">
+                <CheckCircle className="h-5 w-5 text-success mr-2 flex-shrink-0" />
+                <span className="text-sm">Expert-designed questions mirroring real IELTS exams</span>
+              </div>
+              <div className="flex items-center">
+                <CheckCircle className="h-5 w-5 text-success mr-2 flex-shrink-0" />
+                <span className="text-sm">Personalized feedback to improve your band score</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Auth Forms - Appears second on mobile, first on desktop */}
+        <div className="flex items-center justify-center order-2 lg:order-1 fade-in">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full max-w-md">
             <TabsList className="grid grid-cols-2 w-full mb-4">
               <TabsTrigger value="login">Login</TabsTrigger>
@@ -114,11 +196,11 @@ export default function AuthPage() {
 
             {/* Login Form */}
             <TabsContent value="login">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Welcome back</CardTitle>
+              <Card className="border-border shadow-lg">
+                <CardHeader className="space-y-1">
+                  <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
                   <CardDescription>
-                    Sign in to access your IELTS practice tests
+                    Sign in to continue your IELTS preparation
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -131,7 +213,11 @@ export default function AuthPage() {
                           <FormItem>
                             <FormLabel>Username</FormLabel>
                             <FormControl>
-                              <Input placeholder="Enter your username" {...field} />
+                              <Input 
+                                placeholder="Enter your username" 
+                                className="border-input focus:border-primary" 
+                                {...field} 
+                              />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -144,7 +230,12 @@ export default function AuthPage() {
                           <FormItem>
                             <FormLabel>Password</FormLabel>
                             <FormControl>
-                              <Input type="password" placeholder="Enter your password" {...field} />
+                              <Input 
+                                type="password" 
+                                placeholder="Enter your password" 
+                                className="border-input focus:border-primary" 
+                                {...field} 
+                              />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -152,7 +243,7 @@ export default function AuthPage() {
                       />
                       <Button
                         type="submit"
-                        className="w-full"
+                        className="w-full btn-graduate font-medium"
                         disabled={loginMutation.isPending}
                       >
                         {loginMutation.isPending ? (
@@ -167,14 +258,16 @@ export default function AuthPage() {
                   </Form>
                 </CardContent>
                 <CardFooter className="flex flex-col gap-4">
-                  <div className="text-sm text-neutral-dark mt-2">
+                  <Separator className="my-2" />
+                  <div className="text-sm text-muted-foreground text-center">
                     Don't have an account?{" "}
-                    <a
+                    <button
                       onClick={() => setActiveTab("register")}
-                      className="text-primary cursor-pointer hover:underline"
+                      className="text-primary font-medium hover:underline focus:outline-none"
+                      type="button"
                     >
-                      Register
-                    </a>
+                      Create account
+                    </button>
                   </div>
                 </CardFooter>
               </Card>
@@ -182,11 +275,11 @@ export default function AuthPage() {
 
             {/* Register Form */}
             <TabsContent value="register">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Create an account</CardTitle>
+              <Card className="border-border shadow-lg">
+                <CardHeader className="space-y-1">
+                  <CardTitle className="text-2xl font-bold">Create an account</CardTitle>
                   <CardDescription>
-                    Register to start practicing for your IELTS exam
+                    Register to start your IELTS preparation journey
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -199,7 +292,11 @@ export default function AuthPage() {
                           <FormItem>
                             <FormLabel>Username</FormLabel>
                             <FormControl>
-                              <Input placeholder="Choose a username" {...field} />
+                              <Input 
+                                placeholder="Choose a username" 
+                                className="border-input focus:border-primary" 
+                                {...field} 
+                              />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -212,7 +309,12 @@ export default function AuthPage() {
                           <FormItem>
                             <FormLabel>Email</FormLabel>
                             <FormControl>
-                              <Input type="email" placeholder="Enter your email" {...field} />
+                              <Input 
+                                type="email" 
+                                placeholder="Enter your email" 
+                                className="border-input focus:border-primary" 
+                                {...field} 
+                              />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -225,7 +327,12 @@ export default function AuthPage() {
                           <FormItem>
                             <FormLabel>Password</FormLabel>
                             <FormControl>
-                              <Input type="password" placeholder="Create a password" {...field} />
+                              <Input 
+                                type="password" 
+                                placeholder="Create a password" 
+                                className="border-input focus:border-primary" 
+                                {...field} 
+                              />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -238,7 +345,12 @@ export default function AuthPage() {
                           <FormItem>
                             <FormLabel>Confirm Password</FormLabel>
                             <FormControl>
-                              <Input type="password" placeholder="Confirm your password" {...field} />
+                              <Input 
+                                type="password" 
+                                placeholder="Confirm your password" 
+                                className="border-input focus:border-primary" 
+                                {...field} 
+                              />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -246,84 +358,36 @@ export default function AuthPage() {
                       />
                       <Button
                         type="submit"
-                        className="w-full"
+                        className="w-full btn-graduate font-medium"
                         disabled={registerMutation.isPending}
                       >
                         {registerMutation.isPending ? (
                           <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Registering...
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creating account...
                           </>
                         ) : (
-                          "Register"
+                          "Create account"
                         )}
                       </Button>
                     </form>
                   </Form>
                 </CardContent>
                 <CardFooter className="flex flex-col gap-4">
-                  <div className="text-sm text-neutral-dark mt-2">
+                  <Separator className="my-2" />
+                  <div className="text-sm text-muted-foreground text-center">
                     Already have an account?{" "}
-                    <a
+                    <button
                       onClick={() => setActiveTab("login")}
-                      className="text-primary cursor-pointer hover:underline"
+                      className="text-primary font-medium hover:underline focus:outline-none"
+                      type="button"
                     >
                       Sign in
-                    </a>
+                    </button>
                   </div>
                 </CardFooter>
               </Card>
             </TabsContent>
           </Tabs>
-        </div>
-
-        {/* Hero Section */}
-        <div className="flex flex-col justify-center p-6 bg-white rounded-lg shadow-sm">
-          <div className="max-w-md mx-auto">
-            <h1 className="text-3xl font-bold text-primary mb-4">
-              IELTS Exam Simulation Platform
-            </h1>
-            <p className="text-neutral-dark mb-6">
-              Practice for your IELTS exam with our comprehensive simulation platform. We offer all four test modules: Reading, Listening, Writing, and Speaking.
-            </p>
-            <div className="space-y-4">
-              <div className="flex items-start">
-                <div className="bg-primary/10 p-2 rounded-full mr-3">
-                  <BookOpen className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <h3 className="font-medium">Reading</h3>
-                  <p className="text-sm text-neutral-dark">Practice with authentic reading passages and questions</p>
-                </div>
-              </div>
-              <div className="flex items-start">
-                <div className="bg-primary/10 p-2 rounded-full mr-3">
-                  <Headphones className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <h3 className="font-medium">Listening</h3>
-                  <p className="text-sm text-neutral-dark">Test your comprehension with realistic audio recordings</p>
-                </div>
-              </div>
-              <div className="flex items-start">
-                <div className="bg-primary/10 p-2 rounded-full mr-3">
-                  <Pen className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <h3 className="font-medium">Writing</h3>
-                  <p className="text-sm text-neutral-dark">Develop your writing skills with timed tasks</p>
-                </div>
-              </div>
-              <div className="flex items-start">
-                <div className="bg-primary/10 p-2 rounded-full mr-3">
-                  <Mic className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <h3 className="font-medium">Speaking</h3>
-                  <p className="text-sm text-neutral-dark">Practice your speaking with simulated interview questions</p>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
