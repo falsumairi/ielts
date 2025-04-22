@@ -95,9 +95,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (isNaN(testId)) {
       return res.status(400).send("Invalid test ID");
     }
-
-    const questions = await storage.getQuestionsForTest(testId);
-    res.json(questions);
+    
+    // Check if randomize flag is set
+    const randomize = req.query.randomize === 'true';
+    const count = req.query.count ? parseInt(req.query.count as string) : undefined;
+    
+    if (randomize) {
+      const questions = await storage.getRandomizedQuestionsForTest(testId, count);
+      res.json(questions);
+    } else {
+      const questions = await storage.getQuestionsForTest(testId);
+      res.json(questions);
+    }
   });
 
   // Passages routes

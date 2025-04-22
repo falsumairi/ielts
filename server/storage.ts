@@ -30,6 +30,7 @@ export interface IStorage {
   
   // Questions
   getQuestionsForTest(testId: number): Promise<Question[]>;
+  getRandomizedQuestionsForTest(testId: number, count?: number): Promise<Question[]>;
   getQuestion(id: number): Promise<Question | undefined>;
   createQuestion(question: InsertQuestion): Promise<Question>;
   
@@ -165,6 +166,39 @@ export class MemStorage implements IStorage {
   // Question methods
   async getQuestionsForTest(testId: number): Promise<Question[]> {
     return Array.from(this.questions.values()).filter(q => q.testId === testId);
+  }
+  
+  // Get randomized questions for a test
+  async getRandomizedQuestionsForTest(testId: number, count?: number): Promise<Question[]> {
+    // Get all questions for this test
+    const allQuestions = Array.from(this.questions.values()).filter(q => q.testId === testId);
+    
+    // If count is not specified or is greater than available questions, use all questions
+    if (!count || count >= allQuestions.length) {
+      // Randomize the order
+      return this.shuffleArray([...allQuestions]);
+    }
+    
+    // Otherwise, select a random subset
+    return this.getRandomSubset(allQuestions, count);
+  }
+  
+  // Helper method to shuffle an array using Fisher-Yates algorithm
+  private shuffleArray<T>(array: T[]): T[] {
+    const result = [...array];
+    for (let i = result.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [result[i], result[j]] = [result[j], result[i]];
+    }
+    return result;
+  }
+  
+  // Helper method to get a random subset of items
+  private getRandomSubset<T>(array: T[], count: number): T[] {
+    // First shuffle the array
+    const shuffled = this.shuffleArray(array);
+    // Then take the first 'count' elements
+    return shuffled.slice(0, count);
   }
 
   async getQuestion(id: number): Promise<Question | undefined> {
