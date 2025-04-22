@@ -39,10 +39,13 @@ export default function TextEditor({
     const count = content.trim() ? words.length : 0;
     setWordCount(count);
     
+    // Only call this when word count changes
     if (onWordCountChange) {
       onWordCountChange(count);
     }
-  }, [content, onWordCountChange]);
+    // Don't include onWordCountChange in dependency array to avoid infinite loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [content]);
 
   // Auto-save effect
   useEffect(() => {
@@ -69,7 +72,9 @@ export default function TextEditor({
     return () => {
       clearTimeout(saveTimeout);
     };
-  }, [content, history, historyIndex, onChange]);
+    // Don't include onChange in dependency array to avoid infinite loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [content, history, historyIndex]);
 
   // Apply formatting to text
   const applyFormatting = (format: string) => {

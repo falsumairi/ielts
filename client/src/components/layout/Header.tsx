@@ -46,21 +46,15 @@ export default function Header({ toggleSidebar }: HeaderProps) {
 
         {/* Desktop navigation */}
         <nav className="hidden md:flex items-center space-x-6">
-          <Link href="/">
-            <a className={`font-medium hover:text-primary transition ${location === "/" ? "text-primary" : ""}`}>
-              Dashboard
-            </a>
+          <Link href="/" className={`font-medium hover:text-primary transition ${location === "/" ? "text-primary" : ""}`}>
+            Dashboard
           </Link>
-          <Link href="/results">
-            <a className={`font-medium hover:text-primary transition ${location === "/results" ? "text-primary" : ""}`}>
-              My Results
-            </a>
+          <Link href="/results" className={`font-medium hover:text-primary transition ${location === "/results" ? "text-primary" : ""}`}>
+            My Results
           </Link>
           {user?.role === UserRole.ADMIN && (
-            <Link href="/admin">
-              <a className={`font-medium hover:text-primary transition ${location.startsWith("/admin") ? "text-primary" : ""}`}>
-                Admin
-              </a>
+            <Link href="/admin" className={`font-medium hover:text-primary transition ${location.startsWith("/admin") ? "text-primary" : ""}`}>
+              Admin
             </Link>
           )}
         </nav>
@@ -86,18 +80,18 @@ export default function Header({ toggleSidebar }: HeaderProps) {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
               <DropdownMenuItem asChild>
-                <Link href="/profile">
-                  <a className="w-full cursor-pointer">Your Profile</a>
+                <Link href="/profile" className="w-full cursor-pointer">
+                  Your Profile
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
-                <Link href="/settings">
-                  <a className="w-full cursor-pointer">Settings</a>
+                <Link href="/settings" className="w-full cursor-pointer">
+                  Settings
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
-                <Link href="/help">
-                  <a className="w-full cursor-pointer">Help Center</a>
+                <Link href="/help" className="w-full cursor-pointer">
+                  Help Center
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />

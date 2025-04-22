@@ -48,53 +48,49 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           <h2 className="text-xl font-semibold text-neutral-text">Test Modules</h2>
         </div>
         <nav className="pt-2">
-          <Link href="/">
-            <a
-              className={cn(
-                "flex items-center px-6 py-3 text-neutral-dark hover:text-primary transition",
-                location === "/" && "sidebar-menu-item active"
-              )}
-              onClick={handleLinkClick}
-            >
-              <BookOpen className="h-5 w-5 mr-3" />
-              Reading
-            </a>
+          <Link 
+            href="/"
+            className={cn(
+              "flex items-center px-6 py-3 text-neutral-dark hover:text-primary transition",
+              location === "/" && "sidebar-menu-item active"
+            )}
+            onClick={handleLinkClick}
+          >
+            <BookOpen className="h-5 w-5 mr-3" />
+            Reading
           </Link>
-          <Link href="/?module=listening">
-            <a
-              className={cn(
-                "flex items-center px-6 py-3 text-neutral-dark hover:text-primary transition",
-                location === "/?module=listening" && "sidebar-menu-item active"
-              )}
-              onClick={handleLinkClick}
-            >
-              <Headphones className="h-5 w-5 mr-3" />
-              Listening
-            </a>
+          <Link 
+            href="/?module=listening"
+            className={cn(
+              "flex items-center px-6 py-3 text-neutral-dark hover:text-primary transition",
+              location === "/?module=listening" && "sidebar-menu-item active"
+            )}
+            onClick={handleLinkClick}
+          >
+            <Headphones className="h-5 w-5 mr-3" />
+            Listening
           </Link>
-          <Link href="/?module=writing">
-            <a
-              className={cn(
-                "flex items-center px-6 py-3 text-neutral-dark hover:text-primary transition",
-                location === "/?module=writing" && "sidebar-menu-item active"
-              )}
-              onClick={handleLinkClick}
-            >
-              <Pen className="h-5 w-5 mr-3" />
-              Writing
-            </a>
+          <Link 
+            href="/?module=writing"
+            className={cn(
+              "flex items-center px-6 py-3 text-neutral-dark hover:text-primary transition",
+              location === "/?module=writing" && "sidebar-menu-item active"
+            )}
+            onClick={handleLinkClick}
+          >
+            <Pen className="h-5 w-5 mr-3" />
+            Writing
           </Link>
-          <Link href="/?module=speaking">
-            <a
-              className={cn(
-                "flex items-center px-6 py-3 text-neutral-dark hover:text-primary transition",
-                location === "/?module=speaking" && "sidebar-menu-item active"
-              )}
-              onClick={handleLinkClick}
-            >
-              <Mic className="h-5 w-5 mr-3" />
-              Speaking
-            </a>
+          <Link 
+            href="/?module=speaking"
+            className={cn(
+              "flex items-center px-6 py-3 text-neutral-dark hover:text-primary transition",
+              location === "/?module=speaking" && "sidebar-menu-item active"
+            )}
+            onClick={handleLinkClick}
+          >
+            <Mic className="h-5 w-5 mr-3" />
+            Speaking
           </Link>
           <div className="border-t border-gray-100 my-4"></div>
           <Link href="/results">
