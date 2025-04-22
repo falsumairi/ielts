@@ -40,6 +40,10 @@ export default function Results() {
       if (!res.ok) throw new Error("Failed to fetch attempts");
       return res.json();
     },
+    // Use staleTime to prevent frequent refetching
+    staleTime: 60 * 1000, // 1 minute
+    // Don't refetch on window focus to prevent repeated API calls
+    refetchOnWindowFocus: false
   });
 
   // Fetch test details for each attempt
@@ -51,6 +55,8 @@ export default function Results() {
       return res.json();
     },
     enabled: !!attempts,
+    staleTime: 5 * 60 * 1000, // 5 minutes 
+    refetchOnWindowFocus: false
   });
 
   // Combine test data with attempts (only if both are loaded)
