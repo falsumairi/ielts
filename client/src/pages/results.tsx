@@ -151,7 +151,7 @@ export default function Results() {
               <div className="flex items-center justify-center h-60">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
-            ) : (
+            ) : attempts && attempts.length > 0 ? (
               <>
                 {/* Summary Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -263,6 +263,15 @@ export default function Results() {
                   </TabsContent>
                 </Tabs>
               </>
+            ) : (
+              <div className="p-8 text-center bg-white rounded-lg shadow-sm">
+                <p className="text-lg text-neutral-dark mb-4">No test attempts found.</p>
+                <Button asChild>
+                  <Link href="/">
+                    Take Your First Test <ArrowRight className="ml-2 h-4 w-4" />
+                  </Link>
+                </Button>
+              </div>
             )}
           </div>
         </main>
@@ -317,9 +326,10 @@ function TestHistoryTable({ attempts }: TestHistoryTableProps) {
     }
   };
   
-  return (
-    <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-      {attempts.length === 0 ? (
+  // Check if attempts exists and has items
+  if (!attempts || attempts.length === 0) {
+    return (
+      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
         <div className="p-8 text-center">
           <p className="text-lg text-neutral-dark mb-4">No test attempts found.</p>
           <Button asChild>
@@ -328,64 +338,68 @@ function TestHistoryTable({ attempts }: TestHistoryTableProps) {
             </Link>
           </Button>
         </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Test</TableHead>
-                <TableHead>Module</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Score</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Test</TableHead>
+              <TableHead>Module</TableHead>
+              <TableHead>Date</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Score</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {attempts.map((attempt) => (
+              <TableRow key={attempt.id}>
+                <TableCell className="font-medium">{attempt.test?.title || 'Unknown Test'}</TableCell>
+                <TableCell>
+                  <div className="flex items-center">
+                    {getModuleIcon(attempt.test?.module || '')}
+                    <span className="ml-2 capitalize">{attempt.test?.module}</span>
+                  </div>
+                </TableCell>
+                <TableCell>{formatDate(attempt.startTime)}</TableCell>
+                <TableCell>{getStatusBadge(attempt.status)}</TableCell>
+                <TableCell>
+                  {attempt.score !== null ? attempt.score : 
+                   attempt.status === "completed" ? "Pending" : "-"}
+                </TableCell>
+                <TableCell className="text-right">
+                  {attempt.status === "in_progress" ? (
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      asChild
+                    >
+                      <Link href={`/tests/${attempt.test?.module}/${attempt.testId}?attempt=${attempt.id}`}>
+                        Continue
+                      </Link>
+                    </Button>
+                  ) : (
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      asChild
+                    >
+                      <Link href={`/tests/${attempt.test?.module}/${attempt.testId}?attempt=${attempt.id}&view=true`}>
+                        View
+                      </Link>
+                    </Button>
+                  )}
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {attempts.map((attempt) => (
-                <TableRow key={attempt.id}>
-                  <TableCell className="font-medium">{attempt.test?.title || 'Unknown Test'}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center">
-                      {getModuleIcon(attempt.test?.module || '')}
-                      <span className="ml-2 capitalize">{attempt.test?.module}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>{formatDate(attempt.startTime)}</TableCell>
-                  <TableCell>{getStatusBadge(attempt.status)}</TableCell>
-                  <TableCell>
-                    {attempt.score !== null ? attempt.score : 
-                     attempt.status === "completed" ? "Pending" : "-"}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {attempt.status === "in_progress" ? (
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        asChild
-                      >
-                        <Link href={`/tests/${attempt.test?.module}/${attempt.testId}?attempt=${attempt.id}`}>
-                          Continue
-                        </Link>
-                      </Button>
-                    ) : (
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        asChild
-                      >
-                        <Link href={`/tests/${attempt.test?.module}/${attempt.testId}?attempt=${attempt.id}&view=true`}>
-                          View
-                        </Link>
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+            ))}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }
