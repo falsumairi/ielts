@@ -88,7 +88,7 @@ export class MemStorage implements IStorage {
     // Initialize with admin user
     this.createUser({
       username: "admin",
-      password: "$2b$10$dXCrAZYsKMWOsdnA8Vk3ZejHKVkOzRaXD2VbWgscXwtB39Nd2Bdfm", // "password"
+      password: "$2b$10$JUHEcQTYFBavQBvTEmU1e.UoBgePiITG7YoDvxAHvLGZUsMSN7IQ.", // "password"
       email: "admin@ielts-exam.com",
       role: UserRole.ADMIN
     });
@@ -96,7 +96,7 @@ export class MemStorage implements IStorage {
     // Initialize with test taker user
     this.createUser({
       username: "student",
-      password: "$2b$10$dXCrAZYsKMWOsdnA8Vk3ZejHKVkOzRaXD2VbWgscXwtB39Nd2Bdfm", // "password"
+      password: "$2b$10$JUHEcQTYFBavQBvTEmU1e.UoBgePiITG7YoDvxAHvLGZUsMSN7IQ.", // "password"
       email: "student@example.com",
       role: UserRole.TEST_TAKER
     });
