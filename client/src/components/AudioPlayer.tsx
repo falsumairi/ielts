@@ -25,6 +25,28 @@ export default function AudioPlayer({
   const audioRef = useRef<HTMLAudioElement>(null);
   const { toast } = useToast();
 
+  // Create a unique ID for this audio track to use in localStorage
+  const [audioId] = useState(() => `audio-${audioUrl.split('/').pop()?.replace(/\.[^/.]+$/, '') || Math.random().toString(36).substring(2, 9)}`);
+  
+  // Check if this audio was already played before
+  useEffect(() => {
+    if (!allowReplay) {
+      const playedAudios = JSON.parse(localStorage.getItem('played-audios') || '{}');
+      if (playedAudios[audioId]) {
+        setHasPlayed(true);
+      }
+    }
+  }, [allowReplay, audioId]);
+  
+  // Mark audio as played in localStorage
+  const markAudioAsPlayed = () => {
+    if (!allowReplay) {
+      const playedAudios = JSON.parse(localStorage.getItem('played-audios') || '{}');
+      playedAudios[audioId] = true;
+      localStorage.setItem('played-audios', JSON.stringify(playedAudios));
+    }
+  };
+
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -41,6 +63,7 @@ export default function AudioPlayer({
     const handleEnded = () => {
       setIsPlaying(false);
       setHasPlayed(true);
+      markAudioAsPlayed();
       if (onComplete) onComplete();
       
       if (!allowReplay) {
@@ -68,6 +91,7 @@ export default function AudioPlayer({
       });
       setIsPlaying(true);
       setHasPlayed(true);
+      markAudioAsPlayed();
     }
 
     return () => {
@@ -75,7 +99,7 @@ export default function AudioPlayer({
       audio.removeEventListener('timeupdate', setAudioTime);
       audio.removeEventListener('ended', handleEnded);
     };
-  }, [audioRef, autoPlay, allowReplay, hasPlayed, onComplete, toast]);
+  }, [audioRef, autoPlay, allowReplay, hasPlayed, onComplete, toast, audioId]);
 
   const togglePlay = () => {
     const audio = audioRef.current;
@@ -101,6 +125,7 @@ export default function AudioPlayer({
         });
       });
       setHasPlayed(true);
+      markAudioAsPlayed(); // Persist the played state
     }
     setIsPlaying(!isPlaying);
   };
