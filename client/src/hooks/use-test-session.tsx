@@ -19,7 +19,7 @@ export type TestSession = {
 export function useTestSession(testId: number) {
   const { user } = useAuth();
   const { toast } = useToast();
-  const navigate = useNavigate();
+  const [, setLocation] = useLocation();
   const [session, setSession] = useState<TestSession | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
 
@@ -90,7 +90,7 @@ export function useTestSession(testId: number) {
       queryClient.invalidateQueries({ queryKey: ['/api/attempts/active', testId] });
       
       if (data.status === 'completed' || data.status === 'timed_out') {
-        navigate('/results');
+        setLocation('/results');
         toast({
           title: data.status === 'completed' ? 'Test completed' : 'Time\'s up!',
           description: data.status === 'completed' 

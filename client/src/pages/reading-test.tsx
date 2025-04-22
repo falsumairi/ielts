@@ -1,18 +1,27 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useLocation, useParams } from "wouter";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Test, Passage, Question, QuestionType } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useTestSession } from "@/hooks/use-test-session";
 import ExamTimer from "@/components/ExamTimer";
 import ProgressIndicator from "@/components/ProgressIndicator";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, PauseCircle, PlayCircle } from "lucide-react";
+import { 
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog";
 
 export default function ReadingTest() {
   const { id } = useParams<{ id: string }>();
@@ -20,15 +29,24 @@ export default function ReadingTest() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
   
-  // Get attempt ID from URL
-  const searchParams = new URLSearchParams(window.location.search);
-  const attemptId = parseInt(searchParams.get("attempt") || "0");
-  
   // Component state
   const [activePassageIndex, setActivePassageIndex] = useState(1);
   const [answers, setAnswers] = useState<Record<number, string>>({});
-  const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [testEnded, setTestEnded] = useState(false);
+  const [showPauseDialog, setShowPauseDialog] = useState(false);
+  
+  // Test session hook for timed sessions
+  const {
+    session,
+    isLoading: isLoadingSession,
+    startSession,
+    pauseSession,
+    resumeSession,
+    completeSession,
+    saveAnswer,
+    updateTimeRemaining,
+    handleTimeEnd
+  } = useTestSession(testId);
   
   // Fetch test details
   const { data: test, isLoading: isLoadingTest } = useQuery<Test>({
@@ -63,91 +81,47 @@ export default function ReadingTest() {
     enabled: !!testId && !isNaN(testId),
   });
   
-  // Fetch existing answers (if returning to test)
-  const { data: existingAnswers, isLoading: isLoadingAnswers } = useQuery({
-    queryKey: ["/api/attempts", attemptId, "answers"],
-    queryFn: async () => {
-      const res = await fetch(`/api/attempts/${attemptId}/answers`);
-      if (!res.ok) throw new Error("Failed to fetch answers");
-      return res.json();
-    },
-    enabled: !!attemptId && !isNaN(attemptId),
-  });
-  
-  // Initialize timer when test data is loaded
+  // Initialize session if needed
   useEffect(() => {
-    if (test && !timeLeft) {
-      setTimeLeft(test.durationMinutes * 60);
+    if (test && !session && !isLoadingSession) {
+      startSession();
     }
-  }, [test, timeLeft]);
+  }, [test, session, isLoadingSession, startSession]);
   
-  // Populate answers from existing data
+  // Populate answers from session
   useEffect(() => {
-    if (existingAnswers && questions) {
-      const answerMap = existingAnswers.reduce((acc: Record<number, string>, answer: any) => {
+    if (session?.answers && questions) {
+      const answerMap = session.answers.reduce((acc: Record<number, string>, answer: any) => {
         acc[answer.questionId] = answer.answer;
         return acc;
       }, {});
       setAnswers(answerMap);
     }
-  }, [existingAnswers, questions]);
-  
-  // Submit answer mutation
-  const submitAnswerMutation = useMutation({
-    mutationFn: async ({ questionId, answer }: { questionId: number; answer: string }) => {
-      const res = await apiRequest("POST", `/api/attempts/${attemptId}/answers`, {
-        questionId,
-        answer,
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/attempts", attemptId, "answers"] });
-    },
-    onError: (error) => {
-      toast({
-        title: "Error",
-        description: "Failed to submit answer",
-        variant: "destructive",
-      });
-    },
-  });
-  
-  // Complete test mutation
-  const completeTestMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("PATCH", `/api/attempts/${attemptId}`, {
-        status: "completed",
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({
-        title: "Test Completed",
-        description: "Your answers have been submitted",
-      });
-      navigate("/results");
-    },
-    onError: (error) => {
-      toast({
-        title: "Error",
-        description: "Failed to complete test",
-        variant: "destructive",
-      });
-    },
-  });
+  }, [session?.answers, questions]);
   
   // Handle answer change
-  const handleAnswerChange = (questionId: number, value: string) => {
+  const handleAnswerChange = useCallback((questionId: number, value: string) => {
     setAnswers((prev) => ({ ...prev, [questionId]: value }));
-    submitAnswerMutation.mutate({ questionId, answer: value });
-  };
+    saveAnswer(questionId, value);
+  }, [saveAnswer]);
   
   // Handle test end (time up or manual submission)
-  const handleEndTest = () => {
+  const handleEndTest = useCallback(() => {
     setTestEnded(true);
-    completeTestMutation.mutate();
-  };
+    completeSession();
+  }, [completeSession]);
+  
+  // Handle timer pause
+  const handlePauseTimer = useCallback(() => {
+    setShowPauseDialog(true);
+    pauseSession();
+  }, [pauseSession]);
+  
+  // Handle timer resume
+  const handleResumeTimer = useCallback(() => {
+    setShowPauseDialog(false);
+    resumeSession();
+  }, [resumeSession]);
   
   // Get questions for the current passage
   const filteredQuestions = questions?.filter(q => q.passageIndex === activePassageIndex) || [];
@@ -168,7 +142,7 @@ export default function ReadingTest() {
     };
   }) || [];
   
-  if (isLoadingTest || isLoadingPassages || isLoadingQuestions) {
+  if (isLoadingTest || isLoadingPassages || isLoadingQuestions || isLoadingSession) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-neutral-bg">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -180,20 +154,79 @@ export default function ReadingTest() {
   
   return (
     <div className="min-h-screen flex flex-col bg-neutral-bg">
+      {/* Pause Dialog */}
+      <Dialog open={showPauseDialog}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Test Paused</DialogTitle>
+            <DialogDescription>
+              Your test has been paused and the timer is stopped. You can return to the test when you're ready.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="my-4 p-4 bg-amber-50 border border-amber-100 rounded-md text-amber-700 text-sm">
+            <p>Note: The test will remain paused until you resume it. You can close the browser and return later.</p>
+          </div>
+          <DialogFooter>
+            <Button onClick={handleResumeTimer}>
+              <PlayCircle className="h-4 w-4 mr-2" />
+              Resume Test
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    
       <div className="bg-white shadow-sm p-4 mb-6">
-        <div className="container mx-auto max-w-6xl flex justify-between items-center">
+        <div className="container mx-auto max-w-6xl flex justify-between items-center flex-wrap gap-4">
           <div>
             <h1 className="text-xl md:text-2xl font-bold text-neutral-text">IELTS Reading Module</h1>
             <p className="text-neutral-dark text-sm md:text-base">
               {test?.title} · Duration: {test?.durationMinutes} minutes
             </p>
           </div>
-          <ExamTimer
-            initialSeconds={timeLeft || 0}
-            onTimeEnd={handleEndTest}
-          />
+          <div className="flex space-x-4 items-center">
+            {session?.status === 'in_progress' && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={handlePauseTimer}
+                className="flex items-center"
+              >
+                <PauseCircle className="h-4 w-4 mr-2" />
+                Pause Test
+              </Button>
+            )}
+            {session?.status === 'paused' && (
+              <Button 
+                variant="default" 
+                size="sm" 
+                onClick={handleResumeTimer}
+                className="flex items-center"
+              >
+                <PlayCircle className="h-4 w-4 mr-2" />
+                Resume Test
+              </Button>
+            )}
+            <ExamTimer
+              initialSeconds={session?.timeRemaining || 0}
+              onTimeEnd={handleTimeEnd}
+              allowPause={true}
+              showProgress={true}
+              onTimeUpdate={updateTimeRemaining}
+            />
+          </div>
         </div>
       </div>
+      
+      {session?.status === 'paused' && (
+        <div className="container mx-auto max-w-6xl px-4 mb-6">
+          <Alert variant="warning">
+            <AlertTitle>Test paused</AlertTitle>
+            <AlertDescription>
+              Your test is currently paused. The timer has stopped. Click "Resume Test" to continue.
+            </AlertDescription>
+          </Alert>
+        </div>
+      )}
       
       <div className="container mx-auto max-w-6xl px-4 mb-6">
         <ProgressIndicator
@@ -293,10 +326,11 @@ export default function ReadingTest() {
                     />
                   )}
                   
-                  {question.type === QuestionType.MATCHING && question.options && typeof question.options === 'object' && (
+                  {question.type === QuestionType.MATCHING && question.options && typeof question.options === 'object' && 
+                   'items' in question.options && Array.isArray(question.options.items) && 
+                   'matches' in question.options && Array.isArray(question.options.matches) && (
                     <div className="space-y-4">
-                      {question.options.items && Array.isArray(question.options.items) && 
-                       question.options.items.map((item, i) => (
+                      {question.options.items.map((item: string, i: number) => (
                         <div key={i} className="space-y-2">
                           <p className="font-medium">{item}</p>
                           <select
@@ -318,10 +352,9 @@ export default function ReadingTest() {
                             }}
                           >
                             <option value="">Select an option</option>
-                            {question.options.matches && Array.isArray(question.options.matches) && 
-                              question.options.matches.map((match, j) => (
-                                <option key={j} value={match}>{match}</option>
-                              ))}
+                            {question.options.matches.map((match: string, j: number) => (
+                              <option key={j} value={match}>{match}</option>
+                            ))}
                           </select>
                         </div>
                       ))}
@@ -359,9 +392,9 @@ export default function ReadingTest() {
                 <Button
                   onClick={handleEndTest}
                   className="bg-primary text-white"
-                  disabled={completeTestMutation.isPending}
+                  disabled={!session || session.status !== 'in_progress'}
                 >
-                  {completeTestMutation.isPending ? (
+                  {!session || session.status !== 'in_progress' ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Submitting...
                     </>
