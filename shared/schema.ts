@@ -18,6 +18,22 @@ export enum UserRole {
   TEST_TAKER = "test_taker"
 }
 
+// Notification types
+export enum NotificationType {
+  SYSTEM = "system",
+  TEST_REMINDER = "test_reminder",
+  VOCABULARY_REVIEW = "vocabulary_review",
+  ACHIEVEMENT = "achievement"
+}
+
+// Notification priorities
+export enum NotificationPriority {
+  LOW = "low",
+  MEDIUM = "medium",
+  HIGH = "high",
+  URGENT = "urgent"
+}
+
 // Users table
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -184,18 +200,6 @@ export const insertVocabularySchema = createInsertSchema(vocabularies).pick({
 });
 
 // Notifications table
-export enum NotificationType {
-  VOCABULARY_REVIEW = "vocabulary_review",
-  TEST_REMINDER = "test_reminder",
-  ACHIEVEMENT = "achievement",
-  SYSTEM = "system"
-}
-
-export enum NotificationPriority {
-  LOW = "low",
-  MEDIUM = "medium",
-  HIGH = "high"
-}
 
 export const notifications = pgTable("notifications", {
   id: serial("id").primaryKey(),

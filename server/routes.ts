@@ -365,6 +365,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
         validatedData.score
       );
       
+      // If the attempt is completed, send a notification
+      if (validatedData.status === "completed") {
+        // Get test details
+        const test = await storage.getTest(updatedAttempt.testId);
+        if (test) {
+          // Create notification about completed test
+          await createSystemNotification(
+            updatedAttempt.userId,
+            `${test.title} Completed`,
+            `You have completed the ${test.title}. ${
+              validatedData.score !== undefined ? `Your score is ${validatedData.score}%` : 'Your score will be available soon'
+            }. Check your results page for more details.`,
+            NotificationPriority.MEDIUM,
+            "/results"
+          );
+          
+          // Check if they've completed all modules for an achievement notification
+          const userAttempts = await storage.getAttemptsByUser(updatedAttempt.userId);
+          const completedAttempts = userAttempts.filter(a => a.status === "completed");
+          const completedTestIds = completedAttempts.map(a => a.testId);
+          
+          // Get all the tests to check which modules they've completed
+          const completedTests = await Promise.all(
+            completedTestIds.map(id => storage.getTest(id))
+          );
+          
+          // Extract modules from completed tests (filter out any undefined tests)
+          const completedModules = new Set(
+            completedTests
+              .filter(Boolean) // Remove undefined tests
+              .map(t => t?.module)
+          );
+          
+          // Check if they've completed all modules
+          if (completedModules.size === Object.keys(TestModule).length) {
+            await createAchievementNotification(
+              updatedAttempt.userId,
+              {
+                name: "IELTS Master",
+                description: "You've completed all test modules! Great job preparing for your IELTS exam!"
+              }
+            );
+          }
+        }
+      }
+      
       res.json(updatedAttempt);
     } catch (error) {
       res.status(400).send(`Invalid status update: ${error.message}`);
@@ -1797,7 +1843,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const validatedData = schema.parse(req.body);
 
       const vocabulary = await storage.createVocabulary({
-        userId: req.user.id,
+        userId: req.user!.id,
         word: validatedData.word,
         cefrLevel: validatedData.cefrLevel,
         wordFamily: validatedData.wordFamily || null,
@@ -1806,6 +1852,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         arabicMeaning: validatedData.arabicMeaning || null,
         reviewStage: 0
       });
+      
+      // After creating the first vocabulary item, send a welcome notification
+      const userVocabulary = await storage.getVocabulariesByUser(req.user!.id);
+      if (userVocabulary.length === 1) {
+        await createSystemNotification(
+          req.user!.id,
+          "Welcome to Vocabulary Learning!",
+          "You've added your first vocabulary word. Keep adding more words and review them regularly to improve your English vocabulary.",
+          NotificationPriority.MEDIUM,
+          "/vocabulary-review"
+        );
+      }
 
       res.status(201).json(vocabulary);
     } catch (error) {
@@ -1880,6 +1938,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Update the vocabulary item
       const updatedVocabulary = await storage.updateVocabularyReviewStatus(vocabularyId, newStage);
+      
+      // Check if this was the last vocabulary item to review
+      const remainingItems = await storage.getVocabularyForReview(req.user!.id);
+      if (remainingItems.length === 0) {
+        // Send achievement notification
+        await createAchievementNotification(
+          req.user!.id,
+          {
+            name: "Vocabulary Master",
+            description: "You've completed all your vocabulary reviews for today! Keep up the good work!"
+          }
+        );
+      }
+      
       res.json(updatedVocabulary);
     } catch (error) {
       console.error("Error updating vocabulary review status:", error);
