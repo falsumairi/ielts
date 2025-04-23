@@ -1424,76 +1424,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Route for scoring speaking responses (with audio upload)
+  // Audio upload configuration for both transcription and scoring
   const audioUpload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
     fileFilter: (req, file, cb) => {
-      const allowedMimes = ['audio/mp3', 'audio/mpeg', 'audio/wav'];
+      const allowedMimes = ['audio/mp3', 'audio/mpeg', 'audio/wav', 'audio/webm'];
       if (allowedMimes.includes(file.mimetype)) {
         cb(null, true);
       } else {
         cb(null, false);
-        return cb(new Error('Only MP3 and WAV formats are allowed'));
+        return cb(new Error('Only MP3, WAV, and WebM formats are allowed'));
       }
     }
   });
-
-  app.post("/api/score/speaking", isAuthenticated, audioUpload.single('audio'), async (req, res) => {
+  
+  // Route for transcribing audio
+  app.post("/api/transcribe", isAuthenticated, audioUpload.single('audio'), async (req, res) => {
     try {
       if (!req.file) {
-        return res.status(400).json({ error: "No audio file uploaded" });
+        return res.status(400).send("No audio file uploaded");
       }
-
-      const promptSchema = z.object({
-        promptId: z.number().optional(),
-        prompt: z.string(),
-        attemptId: z.number().optional(),
-        answerId: z.number().optional()
-      });
-
-      const data = promptSchema.parse(req.body);
       
       // Transcribe the audio
       const transcription = await transcribeSpeakingAudio(req.file.buffer);
       
+      res.json({ transcription });
+    } catch (error) {
+      console.error("Error transcribing audio:", error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to transcribe audio"
+      });
+    }
+  });
+
+  app.post("/api/speaking/score", isAuthenticated, async (req, res) => {
+    try {
+      const scoreSchema = z.object({
+        questionId: z.number(),
+        transcription: z.string(),
+        prompt: z.string()
+      });
+
+      const data = scoreSchema.parse(req.body);
+      
       // Score the transcribed response
-      const result = await scoreSpeakingResponse(data.prompt, transcription);
-
-      // If an answerId was provided, update the answer with the score
-      if (data.answerId) {
-        const answer = await storage.getAnswer(data.answerId);
-        if (answer) {
-          // Check if user is authorized to update this answer
-          if (answer.userId === req.user?.id || req.user?.role === UserRole.ADMIN) {
-            await storage.updateAnswer(
-              data.answerId, 
-              true, // isCorrect
-              result.overallScore, 
-              result.feedback, 
-              null // gradedBy (AI graded)
-            );
-          }
-        }
-      }
-
-      // If an attemptId was provided, update the attempt score
-      if (data.attemptId) {
-        const attempt = await storage.getAttempt(data.attemptId);
-        if (attempt && (attempt.userId === req.user?.id || req.user?.role === UserRole.ADMIN)) {
-          await storage.updateAttemptStatus(
-            data.attemptId,
-            "completed",
-            new Date(),
-            result.overallScore
-          );
-        }
-      }
+      const result = await scoreSpeakingResponse(data.prompt, data.transcription);
 
       res.json({
         success: true,
-        transcription,
-        score: result.overallScore,
+        overallScore: result.overallScore,
         criteriaScores: result.criteriaScores,
         feedback: result.feedback
       });
