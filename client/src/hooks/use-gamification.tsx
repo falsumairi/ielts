@@ -27,7 +27,7 @@ export function GamificationProvider({ children }: { children: ReactNode }) {
     error: gamificationError,
   } = useQuery<GamificationData>({
     queryKey: ['/api/gamification/user'],
-    queryFn: getQueryFn(),
+    queryFn: getQueryFn({ on401: "returnNull" }),
     staleTime: 1000 * 60 * 5, // 5 minutes
     retry: 1,
     enabled: true,
@@ -40,7 +40,7 @@ export function GamificationProvider({ children }: { children: ReactNode }) {
     error: badgesError,
   } = useQuery<Badge[]>({
     queryKey: ['/api/gamification/badges'],
-    queryFn: getQueryFn(),
+    queryFn: getQueryFn({ on401: "returnNull" }),
     staleTime: 1000 * 60 * 60, // 1 hour
     retry: 1,
     enabled: true,
@@ -53,7 +53,7 @@ export function GamificationProvider({ children }: { children: ReactNode }) {
     error: leaderboardError,
   } = useQuery<LeaderboardEntry[]>({
     queryKey: ['/api/gamification/leaderboard'],
-    queryFn: getQueryFn(),
+    queryFn: getQueryFn({ on401: "returnNull" }),
     staleTime: 1000 * 60 * 15, // 15 minutes
     retry: 1,
     enabled: true,
