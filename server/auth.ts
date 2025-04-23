@@ -102,6 +102,19 @@ export function setupAuth(app: Express) {
         console.error("Error creating welcome notifications:", notificationError);
         // Continue with registration even if notifications fail
       }
+      
+      // Initialize user achievements for gamification
+      try {
+        // The storage methods will automatically create a user achievement record
+        // and award initial badges if applicable
+        const achievement = await storage.getUserAchievement(user.id);
+        if (achievement) {
+          await checkForBadges(user.id);
+        }
+      } catch (gamificationError) {
+        console.error("Error initializing gamification data:", gamificationError);
+        // Continue with registration even if gamification fails
+      }
 
       // Remove password from response
       const userWithoutPassword = { ...user, password: undefined };
@@ -120,14 +133,26 @@ export function setupAuth(app: Express) {
   });
 
   app.post("/api/login", (req, res, next) => {
-    passport.authenticate("local", (err, user, info) => {
+    passport.authenticate("local", async (err, user, info) => {
       if (err) return next(err);
       if (!user) {
         return res.status(401).json({ message: "Invalid username or password" });
       }
       
-      req.login(user, (err) => {
+      req.login(user, async (err) => {
         if (err) return next(err);
+        
+        try {
+          // Update login streak for gamification
+          await updateLoginStreak(user.id);
+          
+          // Check for badges the user may have earned
+          await checkForBadges(user.id);
+        } catch (gamificationError) {
+          console.error("Error updating gamification data on login:", gamificationError);
+          // Continue with login even if gamification fails
+        }
+        
         // Remove password from response
         const userWithoutPassword = { ...user, password: undefined };
         res.status(200).json(userWithoutPassword);
