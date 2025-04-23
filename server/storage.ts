@@ -800,6 +800,75 @@ export class MemStorage implements IStorage {
     this.vocabularies.set(id, updatedVocabulary);
     return updatedVocabulary;
   }
+
+  // Notification methods
+  async getNotificationsByUser(userId: number, unreadOnly: boolean = false): Promise<Notification[]> {
+    const notifications = Array.from(this.notifications.values())
+      .filter(n => n.userId === userId);
+    
+    return unreadOnly ? notifications.filter(n => !n.isRead) : notifications;
+  }
+  
+  async getNotification(id: number): Promise<Notification | undefined> {
+    return this.notifications.get(id);
+  }
+  
+  async createNotification(notification: InsertNotification): Promise<Notification> {
+    const id = this.currentNotificationId++;
+    const now = new Date();
+    
+    const newNotification: Notification = {
+      ...notification,
+      id,
+      isRead: notification.isRead ?? false,
+      scheduledFor: notification.scheduledFor ?? now,
+      createdAt: now
+    };
+    
+    this.notifications.set(id, newNotification);
+    return newNotification;
+  }
+  
+  async markNotificationAsRead(id: number): Promise<Notification | undefined> {
+    const notification = this.notifications.get(id);
+    if (!notification) return undefined;
+    
+    const updatedNotification: Notification = {
+      ...notification,
+      isRead: true
+    };
+    
+    this.notifications.set(id, updatedNotification);
+    return updatedNotification;
+  }
+  
+  async markAllNotificationsAsRead(userId: number): Promise<boolean> {
+    let success = true;
+    const userNotifications = await this.getNotificationsByUser(userId);
+    
+    for (const notification of userNotifications) {
+      try {
+        const updatedNotification: Notification = {
+          ...notification,
+          isRead: true
+        };
+        this.notifications.set(notification.id, updatedNotification);
+      } catch (error) {
+        console.error(`Failed to mark notification ${notification.id} as read:`, error);
+        success = false;
+      }
+    }
+    
+    return success;
+  }
+  
+  async deleteNotification(id: number): Promise<boolean> {
+    return this.notifications.delete(id);
+  }
+  
+  async getUnreadNotificationsCount(userId: number): Promise<number> {
+    return (await this.getNotificationsByUser(userId, true)).length;
+  }
 }
 
 export const storage = new MemStorage();
