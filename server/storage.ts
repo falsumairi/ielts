@@ -6,7 +6,14 @@ import {
   attempts, type Attempt, type InsertAttempt,
   answers, type Answer, type InsertAnswer,
   vocabularies, type Vocabulary, type InsertVocabulary,
-  UserRole, TestModule, QuestionType, CEFRLevel
+  notifications, type Notification, type InsertNotification,
+  badges, type Badge, type InsertBadge,
+  userBadges, type UserBadge, type InsertUserBadge,
+  pointActions, type PointAction, type InsertPointAction,
+  userPoints, type UserPoint, type InsertUserPoint,
+  userLevels, type UserLevel, type InsertUserLevel,
+  userAchievements, type UserAchievement, type InsertUserAchievement,
+  UserRole, TestModule, QuestionType, CEFRLevel, PointActionType
 } from "@shared/schema";
 import session from "express-session";
 import createMemoryStore from "memorystore";
@@ -77,6 +84,45 @@ export interface IStorage {
   deleteNotification(id: number): Promise<boolean>;
   getUnreadNotificationsCount(userId: number): Promise<number>;
   
+  // Badges
+  getBadge(id: number): Promise<Badge | undefined>;
+  getBadgeByName(name: string): Promise<Badge | undefined>;
+  getAllBadges(): Promise<Badge[]>;
+  getActiveBadges(): Promise<Badge[]>;
+  createBadge(badge: InsertBadge): Promise<Badge>;
+  updateBadge(id: number, badge: Partial<Badge>): Promise<Badge | undefined>;
+  
+  // User Badges
+  getUserBadgesByUser(userId: number): Promise<UserBadge[]>;
+  getUserBadge(id: number): Promise<UserBadge | undefined>;
+  getUserBadgeByBadgeId(userId: number, badgeId: number): Promise<UserBadge | undefined>;
+  createUserBadge(userBadge: InsertUserBadge): Promise<UserBadge>;
+  updateUserBadge(id: number, userBadge: Partial<UserBadge>): Promise<UserBadge | undefined>;
+  
+  // Point Actions
+  getPointAction(id: number): Promise<PointAction | undefined>;
+  getPointActionByType(actionType: PointActionType): Promise<PointAction | undefined>;
+  getAllPointActions(): Promise<PointAction[]>;
+  createPointAction(pointAction: InsertPointAction): Promise<PointAction>;
+  updatePointAction(id: number, pointAction: Partial<PointAction>): Promise<PointAction | undefined>;
+  
+  // User Points
+  getUserPointsByUser(userId: number): Promise<UserPoint[]>;
+  getUserPoint(id: number): Promise<UserPoint | undefined>;
+  createUserPoint(userPoint: InsertUserPoint): Promise<UserPoint>;
+  
+  // User Levels
+  getUserLevel(id: number): Promise<UserLevel | undefined>;
+  getUserLevelByLevel(level: number): Promise<UserLevel | undefined>;
+  getAllUserLevels(): Promise<UserLevel[]>;
+  createUserLevel(userLevel: InsertUserLevel): Promise<UserLevel>;
+  updateUserLevel(id: number, userLevel: Partial<UserLevel>): Promise<UserLevel | undefined>;
+  
+  // User Achievements
+  getUserAchievement(userId: number): Promise<UserAchievement | undefined>;
+  createUserAchievement(userAchievement: InsertUserAchievement): Promise<UserAchievement>;
+  updateUserAchievement(userId: number, userAchievement: Partial<UserAchievement>): Promise<UserAchievement | undefined>;
+  
   // Session store
   sessionStore: SessionStore;
 }
@@ -91,6 +137,12 @@ export class MemStorage implements IStorage {
   private answers: Map<number, Answer>;
   private vocabularies: Map<number, Vocabulary>;
   private notifications: Map<number, Notification>;
+  private badges: Map<number, Badge>;
+  private userBadges: Map<number, UserBadge>;
+  private pointActions: Map<number, PointAction>;
+  private userPoints: Map<number, UserPoint>;
+  private userLevels: Map<number, UserLevel>;
+  private userAchievements: Map<number, UserAchievement>;
   currentUserId: number;
   currentTestId: number;
   currentQuestionId: number;
@@ -99,6 +151,12 @@ export class MemStorage implements IStorage {
   currentAnswerId: number;
   currentVocabularyId: number;
   currentNotificationId: number;
+  currentBadgeId: number;
+  currentUserBadgeId: number;
+  currentPointActionId: number;
+  currentUserPointId: number;
+  currentUserLevelId: number;
+  currentUserAchievementId: number;
   sessionStore: SessionStore;
 
   constructor() {
@@ -110,6 +168,12 @@ export class MemStorage implements IStorage {
     this.answers = new Map();
     this.vocabularies = new Map();
     this.notifications = new Map();
+    this.badges = new Map();
+    this.userBadges = new Map();
+    this.pointActions = new Map();
+    this.userPoints = new Map();
+    this.userLevels = new Map();
+    this.userAchievements = new Map();
     this.currentUserId = 1;
     this.currentTestId = 1;
     this.currentQuestionId = 1;
@@ -118,6 +182,12 @@ export class MemStorage implements IStorage {
     this.currentAnswerId = 1;
     this.currentVocabularyId = 1;
     this.currentNotificationId = 1;
+    this.currentBadgeId = 1;
+    this.currentUserBadgeId = 1;
+    this.currentPointActionId = 1;
+    this.currentUserPointId = 1;
+    this.currentUserLevelId = 1;
+    this.currentUserAchievementId = 1;
     this.sessionStore = new MemoryStore({
       checkPeriod: 86400000, // 24h
     });
