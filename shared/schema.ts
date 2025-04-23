@@ -2,6 +2,16 @@ import { pgTable, text, serial, integer, boolean, timestamp, json, uuid, uniqueI
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// CEFR Language Proficiency Levels
+export enum CEFRLevel {
+  A1 = "A1",
+  A2 = "A2",
+  B1 = "B1",
+  B2 = "B2",
+  C1 = "C1",
+  C2 = "C2"
+}
+
 // User roles
 export enum UserRole {
   ADMIN = "admin",
@@ -146,6 +156,33 @@ export const insertAnswerSchema = createInsertSchema(answers).pick({
   audioPath: true,
 });
 
+// Vocabulary table
+export const vocabularies = pgTable("vocabularies", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(),
+  word: text("word").notNull(),
+  cefrLevel: text("cefr_level").notNull(), // One of CEFRLevel
+  wordFamily: text("word_family"), // Related words (nouns, verbs, adjectives)
+  meaning: text("meaning").notNull(), // English definition
+  example: text("example").notNull(), // Example sentence
+  arabicMeaning: text("arabic_meaning"), // Arabic translation
+  lastReviewed: timestamp("last_reviewed").defaultNow(),
+  nextReview: timestamp("next_review"), // For spaced repetition
+  reviewStage: integer("review_stage").default(0), // Current stage in PACE repetition
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertVocabularySchema = createInsertSchema(vocabularies).pick({
+  userId: true,
+  word: true,
+  cefrLevel: true,
+  wordFamily: true,
+  meaning: true,
+  example: true,
+  arabicMeaning: true,
+  reviewStage: true
+});
+
 // Type definitions
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
@@ -164,3 +201,6 @@ export type Attempt = typeof attempts.$inferSelect;
 
 export type InsertAnswer = z.infer<typeof insertAnswerSchema>;
 export type Answer = typeof answers.$inferSelect;
+
+export type InsertVocabulary = z.infer<typeof insertVocabularySchema>;
+export type Vocabulary = typeof vocabularies.$inferSelect;

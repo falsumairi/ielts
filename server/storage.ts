@@ -5,7 +5,8 @@ import {
   passages, type Passage, type InsertPassage,
   attempts, type Attempt, type InsertAttempt,
   answers, type Answer, type InsertAnswer,
-  UserRole, TestModule, QuestionType
+  vocabularies, type Vocabulary, type InsertVocabulary,
+  UserRole, TestModule, QuestionType, CEFRLevel
 } from "@shared/schema";
 import session from "express-session";
 import createMemoryStore from "memorystore";
@@ -58,6 +59,15 @@ export interface IStorage {
   createAnswer(answer: InsertAnswer): Promise<Answer>;
   updateAnswer(id: number, isCorrect: boolean, score?: number, feedback?: string, gradedBy?: number): Promise<Answer | undefined>;
   
+  // Vocabulary
+  getVocabulariesByUser(userId: number): Promise<Vocabulary[]>;
+  getVocabulary(id: number): Promise<Vocabulary | undefined>;
+  createVocabulary(vocabulary: InsertVocabulary): Promise<Vocabulary>;
+  updateVocabulary(id: number, vocabulary: Partial<Vocabulary>): Promise<Vocabulary | undefined>;
+  deleteVocabulary(id: number): Promise<boolean>;
+  getVocabularyForReview(userId: number, limit?: number): Promise<Vocabulary[]>;
+  updateVocabularyReviewStatus(id: number, reviewStage: number): Promise<Vocabulary | undefined>;
+  
   // Session store
   sessionStore: SessionStore;
 }
@@ -70,12 +80,14 @@ export class MemStorage implements IStorage {
   private passages: Map<number, Passage>;
   private attempts: Map<number, Attempt>;
   private answers: Map<number, Answer>;
+  private vocabularies: Map<number, Vocabulary>;
   currentUserId: number;
   currentTestId: number;
   currentQuestionId: number;
   currentPassageId: number;
   currentAttemptId: number;
   currentAnswerId: number;
+  currentVocabularyId: number;
   sessionStore: SessionStore;
 
   constructor() {
@@ -85,12 +97,14 @@ export class MemStorage implements IStorage {
     this.passages = new Map();
     this.attempts = new Map();
     this.answers = new Map();
+    this.vocabularies = new Map();
     this.currentUserId = 1;
     this.currentTestId = 1;
     this.currentQuestionId = 1;
     this.currentPassageId = 1;
     this.currentAttemptId = 1;
     this.currentAnswerId = 1;
+    this.currentVocabularyId = 1;
     this.sessionStore = new MemoryStore({
       checkPeriod: 86400000, // 24h
     });
