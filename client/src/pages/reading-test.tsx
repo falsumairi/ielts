@@ -22,6 +22,7 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
+import TranslationToggle from "@/components/TranslationToggle";
 
 export default function ReadingTest() {
   const { id } = useParams<{ id: string }>();
@@ -34,6 +35,10 @@ export default function ReadingTest() {
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [testEnded, setTestEnded] = useState(false);
   const [showPauseDialog, setShowPauseDialog] = useState(false);
+  
+  // Translation state
+  const [translatedPassage, setTranslatedPassage] = useState<string | null>(null);
+  const [translatedQuestions, setTranslatedQuestions] = useState<Record<number, string>>({});
   
   // Test session hook for timed sessions
   const {
@@ -261,8 +266,22 @@ export default function ReadingTest() {
               </TabsList>
             </Tabs>
             
-            <h2 className="font-bold text-lg mb-4">{currentPassage?.title}</h2>
-            <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: currentPassage?.content || "" }} />
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="font-bold text-lg">{currentPassage?.title}</h2>
+              {currentPassage && (
+                <TranslationToggle
+                  text={currentPassage.content}
+                  onTranslated={setTranslatedPassage}
+                  compact={true}
+                />
+              )}
+            </div>
+            <div 
+              className="prose max-w-none" 
+              dangerouslySetInnerHTML={{ 
+                __html: translatedPassage || currentPassage?.content || "" 
+              }} 
+            />
           </div>
           
           {/* Questions */}
@@ -274,22 +293,36 @@ export default function ReadingTest() {
                     <span className="inline-block bg-primary text-white text-xs px-2 py-1 rounded font-medium">
                       Question {index + 1}
                     </span>
-                    <span className="text-xs text-neutral-dark">
-                      {question.type === QuestionType.MULTIPLE_CHOICE
-                        ? "Multiple Choice"
-                        : question.type === QuestionType.TRUE_FALSE_NG
-                        ? "True/False/Not Given"
-                        : question.type === QuestionType.FILL_BLANK
-                        ? "Fill in the Blank"
-                        : question.type === QuestionType.MATCHING
-                        ? "Matching"
-                        : question.type === QuestionType.SHORT_ANSWER
-                        ? "Short Answer"
-                        : ""}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-neutral-dark">
+                        {question.type === QuestionType.MULTIPLE_CHOICE
+                          ? "Multiple Choice"
+                          : question.type === QuestionType.TRUE_FALSE_NG
+                          ? "True/False/Not Given"
+                          : question.type === QuestionType.FILL_BLANK
+                          ? "Fill in the Blank"
+                          : question.type === QuestionType.MATCHING
+                          ? "Matching"
+                          : question.type === QuestionType.SHORT_ANSWER
+                          ? "Short Answer"
+                          : ""}
+                      </span>
+                      <TranslationToggle
+                        text={question.content}
+                        onTranslated={(translatedText) => {
+                          setTranslatedQuestions(prev => ({
+                            ...prev,
+                            [question.id]: translatedText
+                          }));
+                        }}
+                        compact={true}
+                      />
+                    </div>
                   </div>
                   
-                  <p className="text-neutral-text mb-3">{question.content}</p>
+                  <p className="text-neutral-text mb-3">
+                    {translatedQuestions[question.id] || question.content}
+                  </p>
                   
                   {question.type === QuestionType.MULTIPLE_CHOICE && (
                     <RadioGroup
