@@ -1,163 +1,135 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { useToast } from "./use-toast";
-import { queryClient, getQueryFn, apiRequest } from "@/lib/queryClient";
+import React, { createContext, ReactNode, useContext } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { getQueryFn } from '@/lib/queryClient';
+import type { GamificationData, Badge, LeaderboardEntry, UserBadge } from '@/types/gamification';
+import { useToast } from '@/hooks/use-toast';
 
-interface UserAchievement {
-  id: number;
-  userId: number;
-  totalPoints: number;
-  currentLevel: number;
-  loginStreak: number;
-  lastLoginDate: string | null;
-  testsCompleted: number;
-  vocabularyAdded: number;
-  vocabularyReviewed: number;
-  highestScore: number | null;
-  updatedAt: string | null;
+interface GamificationContextType {
+  gamificationData: GamificationData | null;
+  allBadges: Badge[] | null;
+  leaderboard: LeaderboardEntry[] | null;
+  isGamificationLoading: boolean;
+  isBadgesLoading: boolean;
+  isLeaderboardLoading: boolean;
+  hasBadge: (badgeId: number) => boolean;
+  getProgressToNextLevel: () => number;
 }
 
-interface UserBadge {
-  id: number;
-  userId: number;
-  badgeId: number;
-  earnedAt: string;
-  badge?: Badge;
-}
+const GamificationContext = createContext<GamificationContextType | null>(null);
 
-interface UserLevel {
-  id: number;
-  name: string;
-  level: number;
-  requiredPoints: number;
-  badgeId: number | null;
-}
-
-interface Badge {
-  id: number;
-  name: string;
-  type: string;
-  description: string;
-  rarity: string;
-  imageUrl: string;
-  requiredScore: number | null;
-  requiredCount: number | null;
-  moduleType: string | null;
-  isActive: boolean | null;
-}
-
-interface PointHistory {
-  id: number;
-  userId: number;
-  actionType: string;
-  pointsAwarded: number;
-  createdAt: string;
-  relatedEntityId: number | null;
-  relatedEntityType: string | null;
-}
-
-interface LeaderboardEntry {
-  userId: number;
-  username: string;
-  totalPoints: number;
-  currentLevel: number;
-  levelName: string;
-  badgeCount: number;
-}
-
-interface GamificationData {
-  achievement: UserAchievement;
-  badges: UserBadge[];
-  currentLevel: UserLevel;
-  nextLevel: UserLevel | null;
-  levelProgress: number;
-}
-
-/**
- * Hook for accessing and managing user gamification data
- */
-export function useGamification() {
+export function GamificationProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
-  
-  // Get user's gamification data
-  const { 
-    data: gamificationData, 
+
+  // Fetch user's gamification data
+  const {
+    data: gamificationData,
     isLoading: isGamificationLoading,
     error: gamificationError,
-    refetch: refetchGamification 
   } = useQuery<GamificationData>({
-    queryKey: ["/api/gamification/user-achievement"],
+    queryKey: ['/api/gamification/user'],
     queryFn: getQueryFn(),
-    enabled: true, // Only fetch if user is authenticated
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 1000 * 60 * 5, // 5 minutes
+    retry: 1,
+    enabled: true,
   });
-  
-  // Get all available badges
-  const { 
-    data: allBadges, 
-    isLoading: isBadgesLoading 
+
+  // Fetch all available badges
+  const {
+    data: allBadges,
+    isLoading: isBadgesLoading,
+    error: badgesError,
   } = useQuery<Badge[]>({
-    queryKey: ["/api/gamification/badges"],
+    queryKey: ['/api/gamification/badges'],
     queryFn: getQueryFn(),
-    staleTime: 60 * 60 * 1000, // 1 hour
+    staleTime: 1000 * 60 * 60, // 1 hour
+    retry: 1,
+    enabled: true,
   });
-  
-  // Get user's point history
-  const { 
-    data: pointHistory, 
-    isLoading: isPointHistoryLoading 
-  } = useQuery<PointHistory[]>({
-    queryKey: ["/api/gamification/point-history"],
-    queryFn: getQueryFn(),
-    staleTime: 5 * 60 * 1000, // 5 minutes
-  });
-  
-  // Get leaderboard
-  const { 
-    data: leaderboard, 
-    isLoading: isLeaderboardLoading 
+
+  // Fetch leaderboard
+  const {
+    data: leaderboard,
+    isLoading: isLeaderboardLoading,
+    error: leaderboardError,
   } = useQuery<LeaderboardEntry[]>({
-    queryKey: ["/api/gamification/leaderboard"],
+    queryKey: ['/api/gamification/leaderboard'],
     queryFn: getQueryFn(),
-    staleTime: 15 * 60 * 1000, // 15 minutes
+    staleTime: 1000 * 60 * 15, // 15 minutes
+    retry: 1,
+    enabled: true,
   });
-  
-  // Update login streak
-  const updateLoginStreakMutation = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/gamification/login-streak");
-      return await response.json();
-    },
-    onSuccess: () => {
-      // Invalidate and refetch the gamification data
-      queryClient.invalidateQueries({ queryKey: ["/api/gamification/user-achievement"] });
-    },
-    onError: (error: Error) => {
+
+  // Show errors via toast
+  React.useEffect(() => {
+    if (gamificationError) {
       toast({
-        title: "Couldn't update login streak",
-        description: error.message,
-        variant: "destructive",
+        title: 'Error loading achievements',
+        description: 'Could not load your achievement data. Please try again later.',
+        variant: 'destructive',
       });
-    },
-  });
-  
-  return {
-    gamificationData,
-    allBadges,
-    pointHistory,
-    leaderboard,
-    isGamificationLoading,
-    isBadgesLoading,
-    isPointHistoryLoading,
-    isLeaderboardLoading,
-    gamificationError,
-    refetchGamification,
-    updateLoginStreak: updateLoginStreakMutation.mutate,
-    isUpdatingLoginStreak: updateLoginStreakMutation.isPending,
-    // Helper methods
-    getEarnedBadgeIds: () => gamificationData?.badges.map(b => b.badgeId) || [],
-    // Check if a user has a specific badge
-    hasBadge: (badgeId: number) => gamificationData?.badges.some(b => b.badgeId === badgeId) || false,
-    // Get progress percentage for the next level
-    getLevelProgressPercentage: () => gamificationData?.levelProgress || 0,
+    }
+  }, [gamificationError, toast]);
+
+  React.useEffect(() => {
+    if (badgesError) {
+      toast({
+        title: 'Error loading badges',
+        description: 'Could not load badge data. Please try again later.',
+        variant: 'destructive',
+      });
+    }
+  }, [badgesError, toast]);
+
+  React.useEffect(() => {
+    if (leaderboardError) {
+      toast({
+        title: 'Error loading leaderboard',
+        description: 'Could not load leaderboard data. Please try again later.',
+        variant: 'destructive',
+      });
+    }
+  }, [leaderboardError, toast]);
+
+  // Check if user has a specific badge
+  const hasBadge = (badgeId: number): boolean => {
+    if (!gamificationData || !gamificationData.badges) return false;
+    return gamificationData.badges.some(userBadge => userBadge.badgeId === badgeId);
   };
+
+  // Calculate progress to next level
+  const getProgressToNextLevel = (): number => {
+    if (!gamificationData || !gamificationData.nextLevel) return 100;
+    
+    const { currentLevel, nextLevel, achievement } = gamificationData;
+    const totalPointsNeeded = nextLevel.requiredPoints - currentLevel.requiredPoints;
+    const pointsGained = achievement.totalPoints - currentLevel.requiredPoints;
+    
+    // Calculate percentage
+    return Math.min(100, Math.max(0, (pointsGained / totalPointsNeeded) * 100));
+  };
+
+  return (
+    <GamificationContext.Provider
+      value={{
+        gamificationData: gamificationData || null,
+        allBadges: allBadges || null,
+        leaderboard: leaderboard || null,
+        isGamificationLoading,
+        isBadgesLoading,
+        isLeaderboardLoading,
+        hasBadge,
+        getProgressToNextLevel,
+      }}
+    >
+      {children}
+    </GamificationContext.Provider>
+  );
+}
+
+export function useGamification() {
+  const context = useContext(GamificationContext);
+  if (!context) {
+    throw new Error('useGamification must be used within a GamificationProvider');
+  }
+  return context;
 }

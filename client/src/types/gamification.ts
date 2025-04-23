@@ -1,19 +1,25 @@
 import { BadgeRarity, BadgeType, PointActionType } from './enums';
 
-export interface UserAchievement {
+/**
+ * Badge schema for achievements
+ */
+export interface Badge {
   id: number;
-  userId: number;
-  totalPoints: number;
-  currentLevel: number;
-  loginStreak: number;
-  lastLoginDate: string | null;
-  testsCompleted: number;
-  vocabularyAdded: number;
-  vocabularyReviewed: number;
-  highestScore: number | null;
-  updatedAt: string | null;
+  name: string;
+  type: BadgeType;
+  description: string;
+  rarity: BadgeRarity;
+  imageUrl: string;
+  requiredScore?: number | null;
+  requiredCount?: number | null;
+  moduleType?: string | null;
+  isActive: boolean | null;
+  createdAt: Date | null;
 }
 
+/**
+ * User Badge record - links users to their earned badges
+ */
 export interface UserBadge {
   id: number;
   userId: number;
@@ -22,37 +28,62 @@ export interface UserBadge {
   badge?: Badge;
 }
 
+/**
+ * User Levels define the progression system
+ */
 export interface UserLevel {
   id: number;
   name: string;
   level: number;
   requiredPoints: number;
   badgeId: number | null;
+  createdAt: Date | null;
 }
 
-export interface Badge {
-  id: number;
-  name: string;
-  type: string;
-  description: string;
-  rarity: string;
-  imageUrl: string;
-  requiredScore: number | null;
-  requiredCount: number | null;
-  moduleType: string | null;
-  isActive: boolean | null;
-}
-
+/**
+ * User Point History records points earned by users
+ */
 export interface PointHistory {
   id: number;
   userId: number;
-  actionType: string;
-  pointsAwarded: number;
-  createdAt: string;
-  relatedEntityId: number | null;
-  relatedEntityType: string | null;
+  points: number;
+  action: PointActionType;
+  createdAt: Date;
+  metadata?: string | null;
 }
 
+/**
+ * User Achievement record - tracks user progress in the gamification system
+ */
+export interface UserAchievement {
+  id: number;
+  userId: number;
+  totalPoints: number;
+  currentLevel: number;
+  loginStreak: number;
+  lastLoginDate: Date | null;
+  testsCompleted: number;
+  vocabularyAdded: number;
+  vocabularyReviewed: number;
+  highestScore: number | null;
+  updatedAt: Date | null;
+}
+
+/**
+ * Gamification Data returned from the server
+ */
+export interface GamificationData {
+  achievement: UserAchievement;
+  currentLevel: UserLevel;
+  nextLevel: UserLevel | null;
+  levelProgress: number;
+  badges: UserBadge[];
+  pointHistory: PointHistory[];
+}
+
+/**
+ * Leaderboard entry for display
+ */
 export interface LeaderboardEntry {
   userId: number;
   username: string;
@@ -60,12 +91,5 @@ export interface LeaderboardEntry {
   currentLevel: number;
   levelName: string;
   badgeCount: number;
-}
-
-export interface GamificationData {
-  achievement: UserAchievement;
-  badges: UserBadge[];
-  currentLevel: UserLevel;
-  nextLevel: UserLevel | null;
-  levelProgress: number;
+  rank: number;
 }

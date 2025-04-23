@@ -10,7 +10,7 @@ import { scoreWritingResponse, scoreSpeakingResponse, transcribeSpeakingAudio } 
 import { translateToArabic, translateToEnglish, translateTranscription } from "./utils/translate";
 import { analyzeVocabulary } from "./utils/vocabulary";
 import { createVocabularyReviewNotification, createTestReminderNotification, createAchievementNotification, createSystemNotification } from "./utils/notifications";
-import { initializeGamificationSystem, awardPoints, awardBadge, updateLoginStreak, checkForBadges } from "./utils/gamification";
+import { checkAndUpdateLoginStreak, awardPoints, recordTestCompletion, recordVocabularyAddition, recordVocabularyReview, getUserGamificationData, getLeaderboard, initGamification } from "./utils/gamification";
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -35,8 +35,7 @@ const isAdmin = (req: Request, res: Response, next: Function) => {
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Initialize gamification system
-  await initializeGamificationSystem();
-  console.log('[gamification] Gamification system initialized');
+  initGamification();
 
   // Security middleware
   app.use(helmet({
@@ -2426,7 +2425,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/gamification/login-streak", isAuthenticated, async (req, res) => {
     try {
       const userId = req.user.id;
-      const result = await updateLoginStreak(userId);
+      const result = await checkAndUpdateLoginStreak(userId);
       
       if (!result) {
         return res.status(404).send("User achievement not found");

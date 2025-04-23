@@ -8,7 +8,7 @@ import { User as SelectUser } from "@shared/schema";
 import { z } from "zod";
 import { sendEmail, emailTemplates, generateOTP } from "./utils/email";
 import { createWelcomeNotificationsForNewUser } from "./utils/notifications";
-import { updateLoginStreak, checkForBadges } from "./utils/gamification";
+import { checkAndUpdateLoginStreak } from "./utils/gamification";
 
 declare global {
   namespace Express {
@@ -109,7 +109,7 @@ export function setupAuth(app: Express) {
         // and award initial badges if applicable
         const achievement = await storage.getUserAchievement(user.id);
         if (achievement) {
-          await checkForBadges(user.id);
+          await checkAndUpdateLoginStreak(user.id);
         }
       } catch (gamificationError) {
         console.error("Error initializing gamification data:", gamificationError);
@@ -144,10 +144,7 @@ export function setupAuth(app: Express) {
         
         try {
           // Update login streak for gamification
-          await updateLoginStreak(user.id);
-          
-          // Check for badges the user may have earned
-          await checkForBadges(user.id);
+          await checkAndUpdateLoginStreak(user.id);
         } catch (gamificationError) {
           console.error("Error updating gamification data on login:", gamificationError);
           // Continue with login even if gamification fails

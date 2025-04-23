@@ -1,102 +1,104 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
-import { 
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge as BadgeType } from '../../types/gamification';
 import { BadgeRarity } from '../../types/enums';
 
 interface BadgeProps {
   badge: BadgeType;
-  size?: 'sm' | 'md' | 'lg';
   isEarned?: boolean;
+  size?: 'sm' | 'md' | 'lg';
   showTooltip?: boolean;
   className?: string;
 }
 
 /**
- * Badge component that displays a badge with optional tooltip
+ * Badge component for displaying achievement badges
  */
-export function Badge({ 
-  badge, 
-  size = 'md', 
-  isEarned = true, 
+export function Badge({
+  badge,
+  isEarned = true,
+  size = 'md',
   showTooltip = true,
-  className 
+  className
 }: BadgeProps) {
-  // Size classes based on the size prop
-  const sizeClasses = {
-    sm: 'w-8 h-8',
-    md: 'w-12 h-12',
-    lg: 'w-16 h-16',
-  };
+  // Determine size class
+  const sizeClass = {
+    sm: 'h-12 w-12',
+    md: 'h-16 w-16',
+    lg: 'h-24 w-24',
+  }[size];
   
-  // Rarity border colors
-  const rarityClasses = {
+  // Determine border color based on rarity
+  const rarityBorderClass = isEarned ? {
     [BadgeRarity.COMMON]: 'border-gray-400',
     [BadgeRarity.UNCOMMON]: 'border-green-500',
     [BadgeRarity.RARE]: 'border-blue-500',
     [BadgeRarity.EPIC]: 'border-purple-500',
     [BadgeRarity.LEGENDARY]: 'border-amber-500',
-  };
+  }[badge.rarity] : 'border-gray-300';
   
-  // Rarity background gradients for tooltips
-  const rarityBackgrounds = {
-    [BadgeRarity.COMMON]: 'bg-gradient-to-r from-gray-200 to-gray-300',
-    [BadgeRarity.UNCOMMON]: 'bg-gradient-to-r from-green-200 to-green-300',
-    [BadgeRarity.RARE]: 'bg-gradient-to-r from-blue-200 to-blue-300',
-    [BadgeRarity.EPIC]: 'bg-gradient-to-r from-purple-200 to-purple-300',
-    [BadgeRarity.LEGENDARY]: 'bg-gradient-to-r from-amber-200 to-amber-300',
-  };
+  // Determine background and opacity based on earned status
+  const bgClass = isEarned 
+    ? {
+        [BadgeRarity.COMMON]: 'bg-gradient-to-br from-gray-200 to-gray-400',
+        [BadgeRarity.UNCOMMON]: 'bg-gradient-to-br from-green-200 to-green-500',
+        [BadgeRarity.RARE]: 'bg-gradient-to-br from-blue-200 to-blue-500',
+        [BadgeRarity.EPIC]: 'bg-gradient-to-br from-purple-200 to-purple-600',
+        [BadgeRarity.LEGENDARY]: 'bg-gradient-to-br from-amber-200 to-amber-500',
+      }[badge.rarity]
+    : 'bg-gray-200';
   
-  const BadgeContent = (
+  const opacityClass = isEarned ? 'opacity-100' : 'opacity-50';
+  
+  // Define badge component
+  const badgeComponent = (
     <div 
       className={cn(
-        'relative rounded-full overflow-hidden border-2',
-        sizeClasses[size],
-        isEarned 
-          ? rarityClasses[badge.rarity as BadgeRarity] 
-          : 'border-gray-300 opacity-50 grayscale',
+        'rounded-full flex items-center justify-center border-2',
+        sizeClass,
+        rarityBorderClass,
+        bgClass,
+        opacityClass,
         className
       )}
     >
-      <img 
-        src={badge.imageUrl} 
-        alt={badge.name} 
-        className="w-full h-full object-cover"
-      />
+      {badge.imageUrl ? (
+        <img 
+          src={badge.imageUrl} 
+          alt={badge.name} 
+          className="h-3/4 w-3/4 object-contain" 
+        />
+      ) : (
+        <div className="text-2xl font-bold">
+          {badge.name.slice(0, 2)}
+        </div>
+      )}
     </div>
   );
   
+  // If tooltip is disabled or the badge is not earned, return the badge without tooltip
   if (!showTooltip) {
-    return BadgeContent;
+    return badgeComponent;
   }
   
+  // Otherwise, wrap in tooltip
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          {BadgeContent}
-        </TooltipTrigger>
-        <TooltipContent 
-          className={cn(
-            'p-3 max-w-xs border-2',
-            rarityBackgrounds[badge.rarity as BadgeRarity],
-            rarityClasses[badge.rarity as BadgeRarity]
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {badgeComponent}
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-xs">
+        <div className="space-y-1">
+          <div className="font-medium">{badge.name}</div>
+          <div className="text-xs text-muted-foreground">{badge.description}</div>
+          {!isEarned && (
+            <div className="text-xs mt-1 font-medium text-primary">
+              Not earned yet
+            </div>
           )}
-        >
-          <div className="font-semibold text-sm">{badge.name}</div>
-          <div className="text-xs opacity-90 mt-1">{badge.description}</div>
-          <div className="text-xs mt-2 italic">
-            {isEarned 
-              ? `Rarity: ${badge.rarity.charAt(0).toUpperCase() + badge.rarity.slice(1)}` 
-              : 'Not yet earned'}
-          </div>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+        </div>
+      </TooltipContent>
+    </Tooltip>
   );
 }

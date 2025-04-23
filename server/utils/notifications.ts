@@ -2,6 +2,32 @@ import { NotificationType, NotificationPriority } from "@shared/schema";
 import { storage } from "../storage";
 
 /**
+ * Creates a generic notification
+ * @param params Notification parameters
+ * @returns The created notification
+ */
+export async function createNotification(params: {
+  userId: number;
+  type: NotificationType;
+  title: string;
+  message: string;
+  priority: NotificationPriority;
+  actionLink?: string | null;
+  scheduledFor?: Date | null;
+}) {
+  return await storage.createNotification({
+    userId: params.userId,
+    type: params.type,
+    title: params.title,
+    message: params.message,
+    priority: params.priority,
+    isRead: false,
+    actionLink: params.actionLink || null,
+    scheduledFor: params.scheduledFor || null
+  });
+}
+
+/**
  * Generates a vocabulary review notification for a user
  * @param userId The user ID to create the notification for
  * @returns The created notification

@@ -1,557 +1,571 @@
-import { 
-  PointActionType, 
-  BadgeType, 
-  BadgeRarity, 
-  UserAchievement 
-} from "@shared/schema";
-import { storage } from "../storage";
+import { format, isToday, subDays } from 'date-fns';
+import { storage } from '../storage';
+import { BadgeType, BadgeRarity, PointActionType } from '../../shared/schema';
+import { createNotification } from './notifications';
+import { NotificationType, NotificationPriority } from '../../shared/schema';
 
 /**
- * Award points to a user for a specific action
- * @param userId User ID to award points to
- * @param actionType Type of action performed
- * @param relatedEntityId Optional ID of related entity (test, vocabulary, etc.)
- * @param relatedEntityType Optional type of related entity
- * @returns The updated user achievement record or null if error
+ * Point values for different actions
+ */
+const POINT_VALUES = {
+  [PointActionType.FIRST_ATTEMPT]: 25,
+  [PointActionType.LOGIN_STREAK]: 10,
+  [PointActionType.COMPLETE_TEST]: 20,
+  // per point in test score (e.g. 80% = 80 points)
+  [PointActionType.PERFECT_SCORE]: 50,
+  [PointActionType.ADD_VOCABULARY]: 2,
+  [PointActionType.REVIEW_VOCABULARY]: 1,
+  [PointActionType.FEEDBACK_GIVEN]: 5,
+};
+
+/**
+ * Streak thresholds for badges
+ */
+const STREAK_BADGES = [
+  { days: 3, type: BadgeType.MILESTONE, name: '3-Day Streak', description: 'Logged in for 3 days in a row', rarity: BadgeRarity.COMMON },
+  { days: 7, type: BadgeType.MILESTONE, name: '7-Day Streak', description: 'Logged in for a week straight', rarity: BadgeRarity.UNCOMMON },
+  { days: 14, type: BadgeType.MILESTONE, name: '2-Week Streak', description: 'Logged in for two weeks straight', rarity: BadgeRarity.RARE },
+  { days: 30, type: BadgeType.MILESTONE, name: 'Monthly Dedication', description: 'Logged in every day for a month', rarity: BadgeRarity.EPIC },
+  { days: 90, type: BadgeType.MILESTONE, name: '90-Day Mastery', description: 'Logged in for 90 consecutive days', rarity: BadgeRarity.LEGENDARY },
+];
+
+/**
+ * Test count badges
+ */
+const TEST_COUNT_BADGES = [
+  { count: 1, type: BadgeType.MILESTONE, name: 'First Test', description: 'Completed your first test', rarity: BadgeRarity.COMMON },
+  { count: 5, type: BadgeType.MILESTONE, name: 'Test Explorer', description: 'Completed 5 tests', rarity: BadgeRarity.UNCOMMON },
+  { count: 10, type: BadgeType.MILESTONE, name: 'Test Expert', description: 'Completed 10 tests', rarity: BadgeRarity.RARE },
+  { count: 25, type: BadgeType.MILESTONE, name: 'Test Master', description: 'Completed 25 tests', rarity: BadgeRarity.EPIC },
+  { count: 50, type: BadgeType.MASTERY, name: 'Test Champion', description: 'Completed 50 tests', rarity: BadgeRarity.LEGENDARY },
+];
+
+/**
+ * Vocabulary count badges
+ */
+const VOCABULARY_COUNT_BADGES = [
+  { count: 10, type: BadgeType.MILESTONE, name: 'Word Collector', description: 'Added 10 words to your vocabulary', rarity: BadgeRarity.COMMON },
+  { count: 50, type: BadgeType.MILESTONE, name: 'Vocabulary Builder', description: 'Added 50 words to your vocabulary', rarity: BadgeRarity.UNCOMMON },
+  { count: 100, type: BadgeType.MILESTONE, name: 'Word Expert', description: 'Added 100 words to your vocabulary', rarity: BadgeRarity.RARE },
+  { count: 250, type: BadgeType.MASTERY, name: 'Vocabulary Master', description: 'Added 250 words to your vocabulary', rarity: BadgeRarity.EPIC },
+  { count: 500, type: BadgeType.MASTERY, name: 'Lexicon Legend', description: 'Added 500 words to your vocabulary', rarity: BadgeRarity.LEGENDARY },
+];
+
+/**
+ * Achievement badges
+ */
+const ACHIEVEMENT_BADGES = [
+  { type: BadgeType.ACHIEVEMENT, name: 'Perfect Score', description: 'Achieved a perfect score on a test', rarity: BadgeRarity.EPIC, requiredScore: 100 },
+  { type: BadgeType.ACHIEVEMENT, name: 'Review Champion', description: 'Reviewed 100 vocabulary words', rarity: BadgeRarity.RARE, requiredCount: 100 },
+  { type: BadgeType.SPECIAL, name: 'Early Adopter', description: 'One of the first users of IELTS Exam Pro', rarity: BadgeRarity.LEGENDARY },
+];
+
+/**
+ * Checks and updates user login streak
+ * @param userId User ID to check
+ * @returns Updated streak count
+ */
+export async function checkAndUpdateLoginStreak(userId: number): Promise<number> {
+  // Get user achievement record
+  const achievement = await storage.getUserAchievement(userId);
+  if (!achievement) {
+    return 0;
+  }
+
+  const today = new Date();
+  const lastLogin = achievement.lastLoginDate;
+  
+  let newStreak = achievement.loginStreak;
+  
+  // If last login was yesterday, increment streak
+  if (lastLogin && isToday(subDays(today, 1)) && !isToday(lastLogin)) {
+    newStreak += 1;
+    
+    // Add streak points
+    await awardPoints(userId, PointActionType.LOGIN_STREAK);
+    
+    // Check if user earned a streak badge
+    await checkAndAwardStreakBadge(userId, newStreak);
+  } 
+  // If last login was not yesterday and not today, reset streak to 1
+  else if (!lastLogin || (!isToday(subDays(today, 1)) && !isToday(lastLogin))) {
+    newStreak = 1;
+  }
+  
+  // Update last login date
+  await storage.updateUserAchievement(userId, {
+    lastLoginDate: today,
+    loginStreak: newStreak
+  });
+  
+  return newStreak;
+}
+
+/**
+ * Awards points to a user for an action
+ * @param userId User ID
+ * @param action Point action type
+ * @param value Optional override value (for test scores)
+ * @param metadata Optional metadata
  */
 export async function awardPoints(
   userId: number, 
-  actionType: PointActionType, 
-  relatedEntityId?: number,
-  relatedEntityType?: string
-): Promise<UserAchievement | null> {
-  try {
-    // Get point action configuration
-    const pointAction = await storage.getPointActionByType(actionType);
-    if (!pointAction || !pointAction.isActive) {
-      console.warn(`Point action ${actionType} not found or not active.`);
-      return null;
-    }
-
-    // Create point transaction record
-    await storage.createUserPoint({
-      userId,
-      actionType,
-      points: pointAction.pointsAwarded,
-      description: pointAction.description,
-      relatedEntityId,
-      relatedEntityType
+  action: PointActionType, 
+  value?: number,
+  metadata?: string
+): Promise<void> {
+  const points = value !== undefined ? value : POINT_VALUES[action];
+  
+  // Add points to history
+  await storage.addPointHistory(userId, {
+    points,
+    action,
+    metadata: metadata || null,
+    createdAt: new Date()
+  });
+  
+  // Update total points in user achievement
+  const achievement = await storage.getUserAchievement(userId);
+  if (achievement) {
+    const newPoints = achievement.totalPoints + points;
+    await storage.updateUserAchievement(userId, {
+      totalPoints: newPoints
     });
-
-    // Update user's achievements
-    const achievement = await storage.getUserAchievement(userId);
     
-    if (!achievement) {
-      // Create new achievement record if it doesn't exist
-      const newAchievement = await storage.createUserAchievement({
-        userId,
-        totalPoints: pointAction.pointsAwarded,
-        currentLevel: 1
+    // Check if user leveled up
+    await checkAndUpdateUserLevel(userId, newPoints);
+  }
+}
+
+/**
+ * Checks and awards streak badges
+ * @param userId User ID
+ * @param streak Current streak count
+ */
+async function checkAndAwardStreakBadge(userId: number, streak: number): Promise<void> {
+  // Find all eligible badges that the user should have based on streak
+  const eligibleBadges = STREAK_BADGES.filter(badge => streak >= badge.days);
+  
+  for (const badgeConfig of eligibleBadges) {
+    // Find or create the badge
+    let badge = await storage.getBadgeByName(badgeConfig.name);
+    if (!badge) {
+      badge = await storage.createBadge({
+        name: badgeConfig.name,
+        type: badgeConfig.type,
+        description: badgeConfig.description,
+        rarity: badgeConfig.rarity,
+        imageUrl: '', // No image URLs yet
+        isActive: true
       });
-      
-      // Check for any level ups
-      await checkForLevelUp(userId, pointAction.pointsAwarded);
-      
-      return newAchievement;
-    } else {
-      // Update existing achievement
-      const newTotal = achievement.totalPoints + pointAction.pointsAwarded;
-      
-      // Update achievement stats based on action type
-      let updates: Partial<UserAchievement> = {
-        totalPoints: newTotal,
-        updatedAt: new Date()
-      };
-      
-      if (actionType === PointActionType.COMPLETE_TEST) {
-        updates.testsCompleted = (achievement.testsCompleted || 0) + 1;
-      } else if (actionType === PointActionType.ADD_VOCABULARY) {
-        updates.vocabularyAdded = (achievement.vocabularyAdded || 0) + 1;
-      } else if (actionType === PointActionType.REVIEW_VOCABULARY) {
-        updates.vocabularyReviewed = (achievement.vocabularyReviewed || 0) + 1;
-      }
-      
-      const updatedAchievement = await storage.updateUserAchievement(userId, updates);
-      
-      // Check for any level ups
-      await checkForLevelUp(userId, newTotal);
-      
-      // Check for any badges earned
-      await checkForBadges(userId);
-      
-      return updatedAchievement;
-    }
-  } catch (error) {
-    console.error("Error awarding points:", error);
-    return null;
-  }
-}
-
-/**
- * Check if a user has leveled up based on their total points
- * @param userId User ID to check
- * @param points Current total points
- */
-export async function checkForLevelUp(userId: number, points: number): Promise<void> {
-  try {
-    // Get user's current achievement
-    const achievement = await storage.getUserAchievement(userId);
-    if (!achievement) return;
-    
-    // Get all levels
-    const levels = await storage.getAllUserLevels();
-    
-    // Find the highest level the user qualifies for
-    const qualifyingLevels = levels.filter(level => level.requiredPoints <= points)
-      .sort((a, b) => b.level - a.level);
-    
-    if (qualifyingLevels.length > 0) {
-      const highestLevel = qualifyingLevels[0];
-      
-      // If user has leveled up, update their achievement
-      if (highestLevel.level > achievement.currentLevel) {
-        await storage.updateUserAchievement(userId, {
-          currentLevel: highestLevel.level,
-          updatedAt: new Date()
-        });
-        
-        // Notify user of level up
-        await createLevelUpNotification(userId, highestLevel.level, highestLevel.name);
-        
-        // Award badge if available
-        if (highestLevel.badgeId) {
-          const badge = await storage.getBadge(highestLevel.badgeId);
-          if (badge) {
-            await awardBadge(userId, badge.id);
-          }
-        }
-      }
-    }
-  } catch (error) {
-    console.error("Error checking for level up:", error);
-  }
-}
-
-/**
- * Create a notification for level up
- * @param userId User ID to notify
- * @param level New level reached
- * @param levelName Name of the new level
- */
-async function createLevelUpNotification(userId: number, level: number, levelName: string): Promise<void> {
-  const notificationUtils = await import("./notifications");
-  await notificationUtils.createSystemNotification(
-    userId,
-    `Level Up! You've reached Level ${level}`,
-    `Congratulations! You've advanced to "${levelName}" level. Keep earning points to unlock more rewards and features.`,
-    "HIGH",
-    "/achievements"
-  );
-}
-
-/**
- * Award a badge to a user
- * @param userId User ID to award the badge to
- * @param badgeId Badge ID to award
- * @returns True if badge was awarded, false otherwise
- */
-export async function awardBadge(userId: number, badgeId: number): Promise<boolean> {
-  try {
-    // Check if badge exists and is active
-    const badge = await storage.getBadge(badgeId);
-    if (!badge || !badge.isActive) {
-      console.warn(`Badge ${badgeId} not found or not active.`);
-      return false;
     }
     
     // Check if user already has this badge
-    const existingBadge = await storage.getUserBadgeByBadgeId(userId, badgeId);
-    
-    if (existingBadge) {
-      // If already awarded, increment times earned
-      await storage.updateUserBadge(existingBadge.id, {
-        timesEarned: existingBadge.timesEarned + 1,
-        earnedAt: new Date()
-      });
-    } else {
-      // Award new badge
-      await storage.createUserBadge({
+    const userBadge = await storage.getUserBadge(userId, badge.id);
+    if (!userBadge) {
+      // Award the badge
+      await storage.awardBadge(userId, badge.id);
+      
+      // Create notification
+      await createNotification({
         userId,
-        badgeId,
-        isDisplayed: true,
-        timesEarned: 1
+        type: NotificationType.ACHIEVEMENT,
+        title: `New Badge Earned: ${badge.name}`,
+        message: `You've earned the ${badge.name} badge! ${badge.description}`,
+        priority: NotificationPriority.MEDIUM,
       });
     }
-    
-    // Create notification for badge earned
-    const notificationUtils = await import("./notifications");
-    await notificationUtils.createAchievementNotification(
-      userId,
-      {
-        name: `New Badge: ${badge.name}`,
-        description: `You've earned the "${badge.name}" badge! ${badge.description}`
-      }
-    );
-    
-    return true;
-  } catch (error) {
-    console.error("Error awarding badge:", error);
-    return false;
   }
 }
 
 /**
- * Check for badges that a user may have earned
- * @param userId User ID to check
+ * Checks and updates user level based on total points
+ * @param userId User ID
+ * @param points Total points
  */
-export async function checkForBadges(userId: number): Promise<void> {
-  try {
-    // Get user achievement data
-    const achievement = await storage.getUserAchievement(userId);
-    if (!achievement) return;
-    
-    // Get all active badges
-    const badges = await storage.getActiveBadges();
-    
-    // Check each badge to see if the user qualifies
-    for (const badge of badges) {
-      // Skip badges that require specific values we can't check automatically
-      if (!badge.requiredCount && !badge.requiredScore) continue;
-      
-      let qualifies = false;
-      
-      // Check badge type and required count/score
-      if (badge.type === BadgeType.MILESTONE) {
-        if (badge.moduleType === "vocabulary" && badge.requiredCount && achievement.vocabularyAdded >= badge.requiredCount) {
-          qualifies = true;
-        } else if (badge.moduleType === "vocabulary_reviewed" && badge.requiredCount && achievement.vocabularyReviewed >= badge.requiredCount) {
-          qualifies = true;
-        } else if (badge.moduleType === "tests" && badge.requiredCount && achievement.testsCompleted >= badge.requiredCount) {
-          qualifies = true;
-        } else if (badge.moduleType === "login_streak" && badge.requiredCount && achievement.loginStreak >= badge.requiredCount) {
-          qualifies = true;
-        } else if (badge.moduleType === "points" && badge.requiredScore && achievement.totalPoints >= badge.requiredScore) {
-          qualifies = true;
-        } else if (badge.moduleType === "score" && badge.requiredScore && achievement.highestScore >= badge.requiredScore) {
-          qualifies = true;
-        }
-      }
-      
-      // Award the badge if user qualifies
-      if (qualifies) {
-        // Check if user already has this badge
-        const userBadge = await storage.getUserBadgeByBadgeId(userId, badge.id);
-        if (!userBadge) {
-          await awardBadge(userId, badge.id);
-        }
-      }
-    }
-  } catch (error) {
-    console.error("Error checking for badges:", error);
-  }
-}
-
-/**
- * Update user login streak
- * @param userId User ID to update
- * @returns The updated user achievement or null if error
- */
-export async function updateLoginStreak(userId: number): Promise<UserAchievement | null> {
-  try {
-    // Get user achievement data
-    const achievement = await storage.getUserAchievement(userId);
-    
-    if (!achievement) {
-      // Create new achievement record
-      return await storage.createUserAchievement({
-        userId,
-        loginStreak: 1,
-        lastLoginDate: new Date()
-      });
-    }
-    
-    // Calculate if login continues streak
-    const lastLogin = new Date(achievement.lastLoginDate);
-    const now = new Date();
-    const daysDiff = Math.floor((now.getTime() - lastLogin.getTime()) / (1000 * 60 * 60 * 24));
-    
-    let newStreak = achievement.loginStreak;
-    
-    if (daysDiff === 0) {
-      // Already logged in today, no change
-      return achievement;
-    } else if (daysDiff === 1) {
-      // Consecutive day, increment streak
-      newStreak += 1;
-      
-      // Check for streak milestones (3, 7, 14, 30, etc.)
-      if (
-        newStreak === 3 || 
-        newStreak === 7 || 
-        newStreak === 14 || 
-        newStreak === 30 || 
-        (newStreak > 30 && newStreak % 30 === 0) || 
-        (newStreak > 7 && newStreak % 7 === 0)
-      ) {
-        // Create streak notification
-        const notificationUtils = await import("./notifications");
-        await notificationUtils.createStreakNotification(userId, newStreak);
-        
-        // Award streak points
-        await awardPoints(userId, PointActionType.LOGIN_STREAK);
-      }
+async function checkAndUpdateUserLevel(userId: number, points: number): Promise<void> {
+  // Get current user level
+  const achievement = await storage.getUserAchievement(userId);
+  if (!achievement) return;
+  
+  // Get all levels
+  const levels = await storage.getAllLevels();
+  
+  // Sort levels by required points
+  levels.sort((a, b) => a.requiredPoints - b.requiredPoints);
+  
+  // Find highest level user qualifies for
+  let highestQualifyingLevel = levels[0];
+  for (const level of levels) {
+    if (points >= level.requiredPoints) {
+      highestQualifyingLevel = level;
     } else {
-      // Streak broken, reset to 1
-      newStreak = 1;
+      break;
     }
-    
-    // Update the achievement
-    return await storage.updateUserAchievement(userId, {
-      loginStreak: newStreak,
-      lastLoginDate: now,
-      updatedAt: now
+  }
+  
+  // If user leveled up, update their level and create notification
+  if (highestQualifyingLevel.level > achievement.currentLevel) {
+    await storage.updateUserAchievement(userId, {
+      currentLevel: highestQualifyingLevel.level
     });
-  } catch (error) {
-    console.error("Error updating login streak:", error);
-    return null;
-  }
-}
-
-/**
- * Initialize default point action values
- */
-export async function initializePointActions(): Promise<void> {
-  try {
-    const defaultPointActions = [
-      {
-        actionType: PointActionType.COMPLETE_TEST,
-        pointsAwarded: 100,
-        description: "Completing a test"
-      },
-      {
-        actionType: PointActionType.REVIEW_VOCABULARY,
-        pointsAwarded: 10,
-        description: "Reviewing vocabulary items"
-      },
-      {
-        actionType: PointActionType.ADD_VOCABULARY,
-        pointsAwarded: 5,
-        description: "Adding a new vocabulary word"
-      },
-      {
-        actionType: PointActionType.LOGIN_STREAK,
-        pointsAwarded: 20,
-        description: "Maintaining a login streak"
-      },
-      {
-        actionType: PointActionType.PERFECT_SCORE,
-        pointsAwarded: 150,
-        description: "Achieving a perfect score on a test"
-      },
-      {
-        actionType: PointActionType.FIRST_ATTEMPT,
-        pointsAwarded: 50,
-        description: "Completing a test on first attempt"
-      },
-      {
-        actionType: PointActionType.FEEDBACK_GIVEN,
-        pointsAwarded: 15,
-        description: "Providing feedback on test questions"
-      }
-    ];
     
-    for (const action of defaultPointActions) {
-      // Check if action already exists
-      const existing = await storage.getPointActionByType(action.actionType);
-      if (!existing) {
-        await storage.createPointAction(action);
-      }
-    }
-  } catch (error) {
-    console.error("Error initializing point actions:", error);
+    // Create notification for level up
+    await createNotification({
+      userId,
+      type: NotificationType.ACHIEVEMENT,
+      title: `Level Up! You are now Level ${highestQualifyingLevel.level}`,
+      message: `Congratulations! You've reached ${highestQualifyingLevel.name} (Level ${highestQualifyingLevel.level}). Keep earning points to level up further!`,
+      priority: NotificationPriority.HIGH,
+    });
   }
 }
 
 /**
- * Initialize default user levels
+ * Record test completion and award points and badges
+ * @param userId User ID
+ * @param score Test score (0-100)
+ * @param moduleType Test module type (reading, writing, etc.)
  */
-export async function initializeUserLevels(): Promise<void> {
-  try {
-    const defaultLevels = [
-      { level: 1, name: "Beginner", requiredPoints: 0 },
-      { level: 2, name: "Novice", requiredPoints: 100 },
-      { level: 3, name: "Apprentice", requiredPoints: 300 },
-      { level: 4, name: "Proficient", requiredPoints: 600 },
-      { level: 5, name: "Advanced", requiredPoints: 1000 },
-      { level: 6, name: "Expert", requiredPoints: 1500 },
-      { level: 7, name: "Master", requiredPoints: 2500 },
-      { level: 8, name: "Grandmaster", requiredPoints: 4000 },
-      { level: 9, name: "Champion", requiredPoints: 6000 },
-      { level: 10, name: "Legend", requiredPoints: 10000 }
-    ];
+export async function recordTestCompletion(
+  userId: number, 
+  score: number, 
+  moduleType: string
+): Promise<void> {
+  // Get user achievement
+  const achievement = await storage.getUserAchievement(userId);
+  if (!achievement) return;
+  
+  // Update tests completed count
+  const newCount = achievement.testsCompleted + 1;
+  await storage.updateUserAchievement(userId, {
+    testsCompleted: newCount,
+    highestScore: Math.max(score, achievement.highestScore || 0)
+  });
+  
+  // Award points for test completion
+  await awardPoints(userId, PointActionType.COMPLETE_TEST, undefined, moduleType);
+  
+  // Award points based on score
+  await awardPoints(userId, PointActionType.PERFECT_SCORE, score, moduleType);
+  
+  // Award first test badge if this is their first test
+  if (newCount === 1) {
+    await awardPoints(userId, PointActionType.FIRST_ATTEMPT);
+  }
+  
+  // Award perfect score badge if applicable
+  if (score === 100) {
+    await awardPoints(userId, PointActionType.PERFECT_SCORE);
+    await awardPerfectScoreBadge(userId, moduleType);
+  }
+  
+  // Check if user earned a test count badge
+  await checkAndAwardTestCountBadge(userId, newCount);
+}
+
+/**
+ * Awards perfect score badge
+ * @param userId User ID
+ * @param moduleType Test module type
+ */
+async function awardPerfectScoreBadge(userId: number, moduleType: string): Promise<void> {
+  const perfectScoreConfig = ACHIEVEMENT_BADGES.find(b => b.name === 'Perfect Score');
+  if (!perfectScoreConfig) return;
+  
+  // Find or create the badge
+  let badge = await storage.getBadgeByName(perfectScoreConfig.name);
+  if (!badge) {
+    badge = await storage.createBadge({
+      name: perfectScoreConfig.name,
+      type: perfectScoreConfig.type,
+      description: perfectScoreConfig.description,
+      rarity: perfectScoreConfig.rarity,
+      imageUrl: '',
+      requiredScore: perfectScoreConfig.requiredScore,
+      moduleType: null,
+      isActive: true
+    });
+  }
+  
+  // Check if user already has this badge
+  const userBadge = await storage.getUserBadge(userId, badge.id);
+  if (!userBadge) {
+    // Award the badge
+    await storage.awardBadge(userId, badge.id);
     
-    for (const level of defaultLevels) {
-      // Check if level already exists
-      const existing = await storage.getUserLevelByLevel(level.level);
-      if (!existing) {
-        await storage.createUserLevel(level);
-      }
-    }
-  } catch (error) {
-    console.error("Error initializing user levels:", error);
+    // Create notification
+    await createNotification({
+      userId,
+      type: NotificationType.ACHIEVEMENT,
+      title: `New Badge Earned: ${badge.name}`,
+      message: `Incredible! You've earned the ${badge.name} badge for achieving a perfect score on a ${moduleType} test!`,
+      priority: NotificationPriority.HIGH,
+    });
   }
 }
 
 /**
- * Initialize default badges
+ * Checks and awards test count badges
+ * @param userId User ID
+ * @param count Test count
  */
-export async function initializeDefaultBadges(): Promise<void> {
-  try {
-    const defaultBadges = [
-      {
-        name: "First Test",
-        description: "Completed your first test",
-        type: BadgeType.ACHIEVEMENT,
-        rarity: BadgeRarity.COMMON,
-        imageUrl: "/badges/first-test.svg",
-        requiredCount: 1,
-        moduleType: "tests"
-      },
-      {
-        name: "Test Enthusiast",
-        description: "Completed 5 tests",
-        type: BadgeType.MILESTONE,
-        rarity: BadgeRarity.UNCOMMON,
-        imageUrl: "/badges/test-enthusiast.svg",
-        requiredCount: 5,
-        moduleType: "tests"
-      },
-      {
-        name: "Test Master",
-        description: "Completed 25 tests",
-        type: BadgeType.MILESTONE,
-        rarity: BadgeRarity.RARE,
-        imageUrl: "/badges/test-master.svg",
-        requiredCount: 25,
-        moduleType: "tests"
-      },
-      {
-        name: "Vocabulary Collector",
-        description: "Added 10 vocabulary words",
-        type: BadgeType.MILESTONE,
-        rarity: BadgeRarity.COMMON,
-        imageUrl: "/badges/vocabulary-collector.svg",
-        requiredCount: 10,
-        moduleType: "vocabulary"
-      },
-      {
-        name: "Vocabulary Expert",
-        description: "Added 50 vocabulary words",
-        type: BadgeType.MILESTONE,
-        rarity: BadgeRarity.UNCOMMON,
-        imageUrl: "/badges/vocabulary-expert.svg",
-        requiredCount: 50,
-        moduleType: "vocabulary"
-      },
-      {
-        name: "Vocabulary Master",
-        description: "Added 100 vocabulary words",
-        type: BadgeType.MILESTONE,
-        rarity: BadgeRarity.RARE,
-        imageUrl: "/badges/vocabulary-master.svg",
-        requiredCount: 100,
-        moduleType: "vocabulary"
-      },
-      {
-        name: "Study Streak",
-        description: "Logged in for 7 consecutive days",
-        type: BadgeType.MILESTONE,
-        rarity: BadgeRarity.UNCOMMON,
-        imageUrl: "/badges/study-streak.svg",
-        requiredCount: 7,
-        moduleType: "login_streak"
-      },
-      {
-        name: "Dedicated Learner",
-        description: "Logged in for 30 consecutive days",
-        type: BadgeType.MILESTONE,
-        rarity: BadgeRarity.EPIC,
-        imageUrl: "/badges/dedicated-learner.svg",
-        requiredCount: 30,
-        moduleType: "login_streak"
-      },
-      {
-        name: "Perfect Score",
-        description: "Achieved a perfect score on a test",
-        type: BadgeType.ACHIEVEMENT,
-        rarity: BadgeRarity.RARE,
-        imageUrl: "/badges/perfect-score.svg",
-        requiredScore: 100,
-        moduleType: "score"
-      },
-      {
-        name: "Point Collector",
-        description: "Earned 1000 points",
-        type: BadgeType.MILESTONE,
-        rarity: BadgeRarity.UNCOMMON,
-        imageUrl: "/badges/point-collector.svg",
-        requiredScore: 1000,
-        moduleType: "points"
-      },
-      {
-        name: "Reading Expert",
-        description: "Mastered the reading section",
-        type: BadgeType.MASTERY,
-        rarity: BadgeRarity.EPIC,
-        imageUrl: "/badges/reading-expert.svg"
-      },
-      {
-        name: "Listening Expert",
-        description: "Mastered the listening section",
-        type: BadgeType.MASTERY,
-        rarity: BadgeRarity.EPIC,
-        imageUrl: "/badges/listening-expert.svg"
-      },
-      {
-        name: "Writing Expert",
-        description: "Mastered the writing section",
-        type: BadgeType.MASTERY,
-        rarity: BadgeRarity.EPIC,
-        imageUrl: "/badges/writing-expert.svg"
-      },
-      {
-        name: "Speaking Expert",
-        description: "Mastered the speaking section",
-        type: BadgeType.MASTERY,
-        rarity: BadgeRarity.EPIC,
-        imageUrl: "/badges/speaking-expert.svg"
-      },
-      {
-        name: "IELTS Legend",
-        description: "Achieved mastery in all IELTS sections",
-        type: BadgeType.SPECIAL,
-        rarity: BadgeRarity.LEGENDARY,
-        imageUrl: "/badges/ielts-legend.svg"
-      }
-    ];
+async function checkAndAwardTestCountBadge(userId: number, count: number): Promise<void> {
+  // Find all eligible badges that the user should have based on count
+  const eligibleBadges = TEST_COUNT_BADGES.filter(badge => count >= badge.count);
+  
+  for (const badgeConfig of eligibleBadges) {
+    // Find or create the badge
+    let badge = await storage.getBadgeByName(badgeConfig.name);
+    if (!badge) {
+      badge = await storage.createBadge({
+        name: badgeConfig.name,
+        type: badgeConfig.type,
+        description: badgeConfig.description,
+        rarity: badgeConfig.rarity,
+        imageUrl: '',
+        requiredCount: badgeConfig.count,
+        isActive: true
+      });
+    }
     
-    for (const badge of defaultBadges) {
-      // Check if badge already exists
-      const existing = await storage.getBadgeByName(badge.name);
-      if (!existing) {
-        await storage.createBadge(badge);
-      }
+    // Check if user already has this badge
+    const userBadge = await storage.getUserBadge(userId, badge.id);
+    if (!userBadge) {
+      // Award the badge
+      await storage.awardBadge(userId, badge.id);
+      
+      // Create notification
+      await createNotification({
+        userId,
+        type: NotificationType.ACHIEVEMENT,
+        title: `New Badge Earned: ${badge.name}`,
+        message: `You've earned the ${badge.name} badge! ${badge.description}`,
+        priority: NotificationPriority.MEDIUM,
+      });
     }
-  } catch (error) {
-    console.error("Error initializing default badges:", error);
   }
 }
 
 /**
- * Initialize all gamification data
+ * Record vocabulary addition and award points and badges
+ * @param userId User ID
  */
-export async function initializeGamificationSystem(): Promise<void> {
-  await initializePointActions();
-  await initializeUserLevels();
-  await initializeDefaultBadges();
+export async function recordVocabularyAddition(userId: number): Promise<void> {
+  // Get user achievement
+  const achievement = await storage.getUserAchievement(userId);
+  if (!achievement) return;
+  
+  // Update vocabulary added count
+  const newCount = achievement.vocabularyAdded + 1;
+  await storage.updateUserAchievement(userId, {
+    vocabularyAdded: newCount
+  });
+  
+  // Award points for vocabulary addition
+  await awardPoints(userId, PointActionType.ADD_VOCABULARY);
+  
+  // Check if user earned a vocabulary count badge
+  await checkAndAwardVocabularyCountBadge(userId, newCount);
+}
+
+/**
+ * Record vocabulary review and award points and badges
+ * @param userId User ID
+ */
+export async function recordVocabularyReview(userId: number): Promise<void> {
+  // Get user achievement
+  const achievement = await storage.getUserAchievement(userId);
+  if (!achievement) return;
+  
+  // Update vocabulary reviewed count
+  const newCount = achievement.vocabularyReviewed + 1;
+  await storage.updateUserAchievement(userId, {
+    vocabularyReviewed: newCount
+  });
+  
+  // Award points for vocabulary review
+  await awardPoints(userId, PointActionType.REVIEW_VOCABULARY);
+  
+  // Check for review champion badge at 100 reviews
+  if (newCount >= 100) {
+    await awardReviewChampionBadge(userId);
+  }
+}
+
+/**
+ * Awards review champion badge
+ * @param userId User ID
+ */
+async function awardReviewChampionBadge(userId: number): Promise<void> {
+  const reviewChampionConfig = ACHIEVEMENT_BADGES.find(b => b.name === 'Review Champion');
+  if (!reviewChampionConfig) return;
+  
+  // Find or create the badge
+  let badge = await storage.getBadgeByName(reviewChampionConfig.name);
+  if (!badge) {
+    badge = await storage.createBadge({
+      name: reviewChampionConfig.name,
+      type: reviewChampionConfig.type,
+      description: reviewChampionConfig.description,
+      rarity: reviewChampionConfig.rarity,
+      imageUrl: '',
+      requiredCount: reviewChampionConfig.requiredCount,
+      isActive: true
+    });
+  }
+  
+  // Check if user already has this badge
+  const userBadge = await storage.getUserBadge(userId, badge.id);
+  if (!userBadge) {
+    // Award the badge
+    await storage.awardBadge(userId, badge.id);
+    
+    // Create notification
+    await createNotification({
+      userId,
+      type: NotificationType.ACHIEVEMENT,
+      title: `New Badge Earned: ${badge.name}`,
+      message: `You've earned the ${badge.name} badge for reviewing 100 vocabulary words! Your dedication to vocabulary practice is paying off.`,
+      priority: NotificationPriority.MEDIUM,
+    });
+  }
+}
+
+/**
+ * Checks and awards vocabulary count badges
+ * @param userId User ID
+ * @param count Vocabulary count
+ */
+async function checkAndAwardVocabularyCountBadge(userId: number, count: number): Promise<void> {
+  // Find all eligible badges that the user should have based on count
+  const eligibleBadges = VOCABULARY_COUNT_BADGES.filter(badge => count >= badge.count);
+  
+  for (const badgeConfig of eligibleBadges) {
+    // Find or create the badge
+    let badge = await storage.getBadgeByName(badgeConfig.name);
+    if (!badge) {
+      badge = await storage.createBadge({
+        name: badgeConfig.name,
+        type: badgeConfig.type,
+        description: badgeConfig.description,
+        rarity: badgeConfig.rarity,
+        imageUrl: '',
+        requiredCount: badgeConfig.count,
+        isActive: true
+      });
+    }
+    
+    // Check if user already has this badge
+    const userBadge = await storage.getUserBadge(userId, badge.id);
+    if (!userBadge) {
+      // Award the badge
+      await storage.awardBadge(userId, badge.id);
+      
+      // Create notification
+      await createNotification({
+        userId,
+        type: NotificationType.ACHIEVEMENT,
+        title: `New Badge Earned: ${badge.name}`,
+        message: `You've earned the ${badge.name} badge! ${badge.description}`,
+        priority: NotificationPriority.MEDIUM,
+      });
+    }
+  }
+}
+
+/**
+ * Get user's gamification data
+ * @param userId User ID
+ */
+export async function getUserGamificationData(userId: number) {
+  // Get user achievement
+  const achievement = await storage.getUserAchievement(userId);
+  if (!achievement) return null;
+  
+  // Get user badges
+  const userBadges = await storage.getUserBadges(userId);
+  
+  // Get all badges for these user badges
+  const badgeIds = userBadges.map(ub => ub.badgeId);
+  const badges = await Promise.all(
+    badgeIds.map(id => storage.getBadge(id))
+  );
+  
+  // Attach badges to user badges
+  const userBadgesWithDetails = userBadges.map((ub, index) => ({
+    ...ub,
+    badge: badges[index] || undefined
+  }));
+  
+  // Get point history
+  const pointHistory = await storage.getUserPointHistory(userId);
+  
+  // Get current level
+  const currentLevel = await storage.getUserLevel(achievement.currentLevel);
+  if (!currentLevel) return null;
+  
+  // Get next level if exists
+  const nextLevel = await storage.getUserLevel(achievement.currentLevel + 1);
+  
+  // Calculate level progress percentage
+  let levelProgress = 100;
+  if (nextLevel) {
+    const pointsForCurrentLevel = currentLevel.requiredPoints;
+    const pointsForNextLevel = nextLevel.requiredPoints;
+    const pointsNeeded = pointsForNextLevel - pointsForCurrentLevel;
+    const pointsGained = achievement.totalPoints - pointsForCurrentLevel;
+    
+    levelProgress = Math.min(100, Math.max(0, (pointsGained / pointsNeeded) * 100));
+  }
+  
+  return {
+    achievement,
+    currentLevel,
+    nextLevel,
+    levelProgress,
+    badges: userBadgesWithDetails,
+    pointHistory
+  };
+}
+
+/**
+ * Get leaderboard
+ * @param limit Maximum number of entries
+ */
+export async function getLeaderboard(limit: number = 10) {
+  // Get all user achievements
+  const achievements = await storage.getAllUserAchievements();
+  
+  // Sort by total points descending
+  achievements.sort((a, b) => b.totalPoints - a.totalPoints);
+  
+  // Limit results
+  const topAchievements = achievements.slice(0, limit);
+  
+  // Get user details
+  const leaderboard = await Promise.all(topAchievements.map(async (a, index) => {
+    const user = await storage.getUser(a.userId);
+    const userLevel = await storage.getUserLevel(a.currentLevel);
+    const userBadges = await storage.getUserBadges(a.userId);
+    
+    return {
+      userId: a.userId,
+      username: user?.username || 'Unknown User',
+      totalPoints: a.totalPoints,
+      currentLevel: a.currentLevel,
+      levelName: userLevel?.name || 'Unknown Level',
+      badgeCount: userBadges.length,
+      rank: index + 1
+    };
+  }));
+  
+  return leaderboard;
+}
+
+/**
+ * Initialize the gamification system
+ */
+export function initGamification() {
+  console.log('[gamification] Gamification system initialized');
 }
