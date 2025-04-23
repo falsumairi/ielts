@@ -6,6 +6,7 @@ import { TestModule, UserRole, QuestionType } from "@shared/schema";
 import helmet from "helmet";
 import { z } from "zod";
 import { sendEmail, generateOTP, emailTemplates } from "./utils/email";
+import { scoreWritingResponse, scoreSpeakingResponse, transcribeSpeakingAudio } from "./utils/openai";
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
