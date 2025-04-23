@@ -939,6 +939,228 @@ export class MemStorage implements IStorage {
   async getUnreadNotificationsCount(userId: number): Promise<number> {
     return (await this.getNotificationsByUser(userId, true)).length;
   }
+  
+  // Badge methods
+  async getBadge(id: number): Promise<Badge | undefined> {
+    return this.badges.get(id);
+  }
+  
+  async getBadgeByName(name: string): Promise<Badge | undefined> {
+    return Array.from(this.badges.values()).find(badge => badge.name === name);
+  }
+  
+  async getAllBadges(): Promise<Badge[]> {
+    return Array.from(this.badges.values());
+  }
+  
+  async getActiveBadges(): Promise<Badge[]> {
+    return Array.from(this.badges.values()).filter(badge => badge.isActive);
+  }
+  
+  async createBadge(insertBadge: InsertBadge): Promise<Badge> {
+    const id = this.currentBadgeId++;
+    const badge: Badge = {
+      ...insertBadge,
+      id,
+      requiredScore: insertBadge.requiredScore || null,
+      requiredCount: insertBadge.requiredCount || null,
+      moduleType: insertBadge.moduleType || null,
+      createdAt: new Date(),
+      isActive: insertBadge.isActive !== undefined ? insertBadge.isActive : true
+    };
+    this.badges.set(id, badge);
+    return badge;
+  }
+  
+  async updateBadge(id: number, updateBadge: Partial<Badge>): Promise<Badge | undefined> {
+    const badge = this.badges.get(id);
+    if (!badge) return undefined;
+    
+    const updatedBadge: Badge = {
+      ...badge,
+      ...updateBadge
+    };
+    
+    this.badges.set(id, updatedBadge);
+    return updatedBadge;
+  }
+  
+  // User Badges methods
+  async getUserBadgesByUser(userId: number): Promise<UserBadge[]> {
+    return Array.from(this.userBadges.values()).filter(userBadge => userBadge.userId === userId);
+  }
+  
+  async getUserBadge(id: number): Promise<UserBadge | undefined> {
+    return this.userBadges.get(id);
+  }
+  
+  async getUserBadgeByBadgeId(userId: number, badgeId: number): Promise<UserBadge | undefined> {
+    return Array.from(this.userBadges.values()).find(
+      userBadge => userBadge.userId === userId && userBadge.badgeId === badgeId
+    );
+  }
+  
+  async createUserBadge(insertUserBadge: InsertUserBadge): Promise<UserBadge> {
+    const id = this.currentUserBadgeId++;
+    const userBadge: UserBadge = {
+      ...insertUserBadge,
+      id,
+      earnedAt: new Date(),
+      isDisplayed: insertUserBadge.isDisplayed !== undefined ? insertUserBadge.isDisplayed : true,
+      timesEarned: insertUserBadge.timesEarned || 1
+    };
+    this.userBadges.set(id, userBadge);
+    return userBadge;
+  }
+  
+  async updateUserBadge(id: number, updateUserBadge: Partial<UserBadge>): Promise<UserBadge | undefined> {
+    const userBadge = this.userBadges.get(id);
+    if (!userBadge) return undefined;
+    
+    const updatedUserBadge: UserBadge = {
+      ...userBadge,
+      ...updateUserBadge
+    };
+    
+    this.userBadges.set(id, updatedUserBadge);
+    return updatedUserBadge;
+  }
+  
+  // Point Actions methods
+  async getPointAction(id: number): Promise<PointAction | undefined> {
+    return this.pointActions.get(id);
+  }
+  
+  async getPointActionByType(actionType: PointActionType): Promise<PointAction | undefined> {
+    return Array.from(this.pointActions.values()).find(action => action.actionType === actionType);
+  }
+  
+  async getAllPointActions(): Promise<PointAction[]> {
+    return Array.from(this.pointActions.values());
+  }
+  
+  async createPointAction(insertPointAction: InsertPointAction): Promise<PointAction> {
+    const id = this.currentPointActionId++;
+    const pointAction: PointAction = {
+      ...insertPointAction,
+      id,
+      isActive: insertPointAction.isActive !== undefined ? insertPointAction.isActive : true,
+      createdAt: new Date()
+    };
+    this.pointActions.set(id, pointAction);
+    return pointAction;
+  }
+  
+  async updatePointAction(id: number, updatePointAction: Partial<PointAction>): Promise<PointAction | undefined> {
+    const pointAction = this.pointActions.get(id);
+    if (!pointAction) return undefined;
+    
+    const updatedPointAction: PointAction = {
+      ...pointAction,
+      ...updatePointAction
+    };
+    
+    this.pointActions.set(id, updatedPointAction);
+    return updatedPointAction;
+  }
+  
+  // User Points methods
+  async getUserPointsByUser(userId: number): Promise<UserPoint[]> {
+    return Array.from(this.userPoints.values()).filter(userPoint => userPoint.userId === userId);
+  }
+  
+  async getUserPoint(id: number): Promise<UserPoint | undefined> {
+    return this.userPoints.get(id);
+  }
+  
+  async createUserPoint(insertUserPoint: InsertUserPoint): Promise<UserPoint> {
+    const id = this.currentUserPointId++;
+    const userPoint: UserPoint = {
+      ...insertUserPoint,
+      id,
+      relatedEntityId: insertUserPoint.relatedEntityId || null,
+      relatedEntityType: insertUserPoint.relatedEntityType || null,
+      earnedAt: new Date()
+    };
+    this.userPoints.set(id, userPoint);
+    return userPoint;
+  }
+  
+  // User Levels methods
+  async getUserLevel(id: number): Promise<UserLevel | undefined> {
+    return this.userLevels.get(id);
+  }
+  
+  async getUserLevelByLevel(level: number): Promise<UserLevel | undefined> {
+    return Array.from(this.userLevels.values()).find(userLevel => userLevel.level === level);
+  }
+  
+  async getAllUserLevels(): Promise<UserLevel[]> {
+    return Array.from(this.userLevels.values());
+  }
+  
+  async createUserLevel(insertUserLevel: InsertUserLevel): Promise<UserLevel> {
+    const id = this.currentUserLevelId++;
+    const userLevel: UserLevel = {
+      ...insertUserLevel,
+      id,
+      badgeId: insertUserLevel.badgeId || null,
+      createdAt: new Date()
+    };
+    this.userLevels.set(id, userLevel);
+    return userLevel;
+  }
+  
+  async updateUserLevel(id: number, updateUserLevel: Partial<UserLevel>): Promise<UserLevel | undefined> {
+    const userLevel = this.userLevels.get(id);
+    if (!userLevel) return undefined;
+    
+    const updatedUserLevel: UserLevel = {
+      ...userLevel,
+      ...updateUserLevel
+    };
+    
+    this.userLevels.set(id, updatedUserLevel);
+    return updatedUserLevel;
+  }
+  
+  // User Achievements methods
+  async getUserAchievement(userId: number): Promise<UserAchievement | undefined> {
+    return Array.from(this.userAchievements.values()).find(achievement => achievement.userId === userId);
+  }
+  
+  async createUserAchievement(insertUserAchievement: InsertUserAchievement): Promise<UserAchievement> {
+    const id = this.currentUserAchievementId++;
+    const userAchievement: UserAchievement = {
+      ...insertUserAchievement,
+      id,
+      totalPoints: insertUserAchievement.totalPoints || 0,
+      currentLevel: insertUserAchievement.currentLevel || 1,
+      loginStreak: insertUserAchievement.loginStreak || 0,
+      lastLoginDate: new Date(),
+      testsCompleted: insertUserAchievement.testsCompleted || 0,
+      vocabularyAdded: insertUserAchievement.vocabularyAdded || 0,
+      vocabularyReviewed: insertUserAchievement.vocabularyReviewed || 0,
+      highestScore: insertUserAchievement.highestScore || 0,
+      updatedAt: new Date()
+    };
+    this.userAchievements.set(id, userAchievement);
+    return userAchievement;
+  }
+  
+  async updateUserAchievement(userId: number, updateUserAchievement: Partial<UserAchievement>): Promise<UserAchievement | undefined> {
+    const achievement = Array.from(this.userAchievements.values()).find(a => a.userId === userId);
+    if (!achievement) return undefined;
+    
+    const updatedAchievement: UserAchievement = {
+      ...achievement,
+      ...updateUserAchievement,
+      updatedAt: new Date()
+    };
+    
+    this.userAchievements.set(achievement.id, updatedAchievement);
+    return updatedAchievement;
+  }
 }
 
 export const storage = new MemStorage();
