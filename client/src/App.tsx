@@ -21,6 +21,7 @@ import ForgotPassword from "@/pages/forgot-password";
 import VerifyEmail from "@/pages/verify-email";
 import VocabularyPage from "@/pages/vocabulary-page";
 import VocabularyReview from "@/pages/vocabulary-review";
+import Achievements from "@/pages/achievements";
 
 function Router() {
   return (
@@ -39,6 +40,7 @@ function Router() {
       <ProtectedRoute path="/results" component={Results} />
       <ProtectedRoute path="/vocabulary" component={VocabularyPage} />
       <ProtectedRoute path="/vocabulary/review" component={VocabularyReview} />
+      <ProtectedRoute path="/achievements" component={Achievements} />
       
       {/* Admin Routes */}
       <ProtectedRoute path="/admin" component={AdminDashboard} adminOnly={true} />

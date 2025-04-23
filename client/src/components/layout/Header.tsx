@@ -35,6 +35,8 @@ export default function Header({ showAuthButtons = true }: HeaderProps) {
   const navigation = [
     { name: "Dashboard", href: "/dashboard" },
     { name: "Results", href: "/results" },
+    { name: "Vocabulary", href: "/vocabulary" },
+    { name: "Achievements", href: "/achievements" },
   ];
 
   const adminNavigation = [
