@@ -68,6 +68,15 @@ export interface IStorage {
   getVocabularyForReview(userId: number, limit?: number): Promise<Vocabulary[]>;
   updateVocabularyReviewStatus(id: number, reviewStage: number): Promise<Vocabulary | undefined>;
   
+  // Notifications
+  getNotificationsByUser(userId: number, unreadOnly?: boolean): Promise<Notification[]>;
+  getNotification(id: number): Promise<Notification | undefined>;
+  createNotification(notification: InsertNotification): Promise<Notification>;
+  markNotificationAsRead(id: number): Promise<Notification | undefined>;
+  markAllNotificationsAsRead(userId: number): Promise<boolean>;
+  deleteNotification(id: number): Promise<boolean>;
+  getUnreadNotificationsCount(userId: number): Promise<number>;
+  
   // Session store
   sessionStore: SessionStore;
 }
@@ -81,6 +90,7 @@ export class MemStorage implements IStorage {
   private attempts: Map<number, Attempt>;
   private answers: Map<number, Answer>;
   private vocabularies: Map<number, Vocabulary>;
+  private notifications: Map<number, Notification>;
   currentUserId: number;
   currentTestId: number;
   currentQuestionId: number;
@@ -88,6 +98,7 @@ export class MemStorage implements IStorage {
   currentAttemptId: number;
   currentAnswerId: number;
   currentVocabularyId: number;
+  currentNotificationId: number;
   sessionStore: SessionStore;
 
   constructor() {
@@ -98,6 +109,7 @@ export class MemStorage implements IStorage {
     this.attempts = new Map();
     this.answers = new Map();
     this.vocabularies = new Map();
+    this.notifications = new Map();
     this.currentUserId = 1;
     this.currentTestId = 1;
     this.currentQuestionId = 1;
@@ -105,6 +117,7 @@ export class MemStorage implements IStorage {
     this.currentAttemptId = 1;
     this.currentAnswerId = 1;
     this.currentVocabularyId = 1;
+    this.currentNotificationId = 1;
     this.sessionStore = new MemoryStore({
       checkPeriod: 86400000, // 24h
     });

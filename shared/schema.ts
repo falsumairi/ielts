@@ -183,6 +183,44 @@ export const insertVocabularySchema = createInsertSchema(vocabularies).pick({
   reviewStage: true
 });
 
+// Notifications table
+export enum NotificationType {
+  VOCABULARY_REVIEW = "vocabulary_review",
+  TEST_REMINDER = "test_reminder",
+  ACHIEVEMENT = "achievement",
+  SYSTEM = "system"
+}
+
+export enum NotificationPriority {
+  LOW = "low",
+  MEDIUM = "medium",
+  HIGH = "high"
+}
+
+export const notifications = pgTable("notifications", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(),
+  type: text("type").notNull(), // One of NotificationType
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  priority: text("priority").notNull().default(NotificationPriority.MEDIUM),
+  isRead: boolean("is_read").default(false),
+  actionLink: text("action_link"), // Optional link to take action on
+  scheduledFor: timestamp("scheduled_for").defaultNow(), // When to show the notification
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertNotificationSchema = createInsertSchema(notifications).pick({
+  userId: true,
+  type: true,
+  title: true,
+  message: true,
+  priority: true,
+  isRead: true,
+  actionLink: true,
+  scheduledFor: true
+});
+
 // Type definitions
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
@@ -204,3 +242,6 @@ export type Answer = typeof answers.$inferSelect;
 
 export type InsertVocabulary = z.infer<typeof insertVocabularySchema>;
 export type Vocabulary = typeof vocabularies.$inferSelect;
+
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+export type Notification = typeof notifications.$inferSelect;
