@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth } from "./auth";
-import { TestModule, UserRole, QuestionType, NotificationType, NotificationPriority } from "@shared/schema";
+import { TestModule, UserRole, QuestionType, NotificationType, NotificationPriority, PointActionType } from "@shared/schema";
 import helmet from "helmet";
 import { z } from "zod";
 import { sendEmail, generateOTP, emailTemplates } from "./utils/email";
@@ -10,6 +10,7 @@ import { scoreWritingResponse, scoreSpeakingResponse, transcribeSpeakingAudio } 
 import { translateToArabic, translateToEnglish, translateTranscription } from "./utils/translate";
 import { analyzeVocabulary } from "./utils/vocabulary";
 import { createVocabularyReviewNotification, createTestReminderNotification, createAchievementNotification, createSystemNotification } from "./utils/notifications";
+import { initializeGamificationSystem, awardPoints, awardBadge, updateLoginStreak, checkForBadges } from "./utils/gamification";
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -33,6 +34,10 @@ const isAdmin = (req: Request, res: Response, next: Function) => {
 };
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Initialize gamification system
+  await initializeGamificationSystem();
+  console.log('[gamification] Gamification system initialized');
+
   // Security middleware
   app.use(helmet({
     contentSecurityPolicy: {
@@ -2339,6 +2344,98 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(error instanceof z.ZodError ? 400 : 500).json({ 
         error: error instanceof Error ? error.message : "Failed to create notifications" 
       });
+    }
+  });
+
+  // Gamification API endpoints
+  app.get("/api/gamification/user-achievement", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const userAchievement = await storage.getUserAchievement(userId);
+      
+      if (!userAchievement) {
+        return res.status(404).send("User achievement not found");
+      }
+      
+      // Get badges earned by the user
+      const userBadges = await storage.getUserBadges(userId);
+      
+      // Get user level information
+      const userLevel = await storage.getUserLevel(userAchievement.currentLevel);
+      
+      // Get next level information if not at max level
+      let nextLevel = null;
+      if (userLevel && userAchievement.currentLevel < await storage.getMaxUserLevel()) {
+        nextLevel = await storage.getUserLevel(userAchievement.currentLevel + 1);
+      }
+      
+      // Calculate progress to next level
+      let levelProgress = 0;
+      if (nextLevel) {
+        const currentLevelPoints = userLevel ? userLevel.pointsRequired : 0;
+        const nextLevelPoints = nextLevel.pointsRequired;
+        const pointsForNextLevel = nextLevelPoints - currentLevelPoints;
+        const userPointsTowardsNextLevel = userAchievement.totalPoints - currentLevelPoints;
+        levelProgress = Math.min(100, Math.max(0, Math.floor((userPointsTowardsNextLevel / pointsForNextLevel) * 100)));
+      }
+      
+      res.json({
+        achievement: userAchievement,
+        badges: userBadges,
+        currentLevel: userLevel,
+        nextLevel,
+        levelProgress
+      });
+    } catch (error) {
+      console.error("Error getting user achievement:", error);
+      res.status(500).send("Error retrieving user achievement data");
+    }
+  });
+  
+  app.get("/api/gamification/badges", isAuthenticated, async (req, res) => {
+    try {
+      const badges = await storage.getAllBadges();
+      res.json(badges);
+    } catch (error) {
+      console.error("Error getting badges:", error);
+      res.status(500).send("Error retrieving badges");
+    }
+  });
+  
+  app.get("/api/gamification/point-history", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const pointHistory = await storage.getUserPointHistory(userId);
+      res.json(pointHistory);
+    } catch (error) {
+      console.error("Error getting point history:", error);
+      res.status(500).send("Error retrieving point history");
+    }
+  });
+  
+  app.get("/api/gamification/leaderboard", isAuthenticated, async (req, res) => {
+    try {
+      const leaderboard = await storage.getLeaderboard();
+      res.json(leaderboard);
+    } catch (error) {
+      console.error("Error getting leaderboard:", error);
+      res.status(500).send("Error retrieving leaderboard data");
+    }
+  });
+  
+  app.post("/api/gamification/login-streak", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const result = await updateLoginStreak(userId);
+      
+      if (!result) {
+        return res.status(404).send("User achievement not found");
+      }
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Error updating login streak:", error);
+      res.status(500).send("Error updating login streak");
     }
   });
 

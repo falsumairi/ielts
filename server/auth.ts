@@ -8,6 +8,7 @@ import { User as SelectUser } from "@shared/schema";
 import { z } from "zod";
 import { sendEmail, emailTemplates, generateOTP } from "./utils/email";
 import { createWelcomeNotificationsForNewUser } from "./utils/notifications";
+import { updateLoginStreak, checkForBadges } from "./utils/gamification";
 
 declare global {
   namespace Express {
