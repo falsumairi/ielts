@@ -671,6 +671,122 @@ export class MemStorage implements IStorage {
       audioPath: null
     });
   }
+
+  // Vocabulary methods
+  async getVocabulariesByUser(userId: number): Promise<Vocabulary[]> {
+    return Array.from(this.vocabularies.values())
+      .filter(v => v.userId === userId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
+  async getVocabulary(id: number): Promise<Vocabulary | undefined> {
+    return this.vocabularies.get(id);
+  }
+
+  async createVocabulary(insertVocabulary: InsertVocabulary): Promise<Vocabulary> {
+    const id = this.currentVocabularyId++;
+
+    // Calculate next review time (24 hours from now for new items)
+    const nextReview = new Date();
+    nextReview.setHours(nextReview.getHours() + 24);
+
+    const vocabulary: Vocabulary = {
+      ...insertVocabulary,
+      id,
+      lastReviewed: new Date(),
+      nextReview,
+      reviewStage: insertVocabulary.reviewStage || 0,
+      createdAt: new Date()
+    };
+
+    this.vocabularies.set(id, vocabulary);
+    return vocabulary;
+  }
+
+  async updateVocabulary(id: number, updatedVocabulary: Partial<Vocabulary>): Promise<Vocabulary | undefined> {
+    const existingVocabulary = this.vocabularies.get(id);
+    if (!existingVocabulary) return undefined;
+
+    const vocabulary: Vocabulary = {
+      ...existingVocabulary,
+      ...updatedVocabulary
+    };
+
+    this.vocabularies.set(id, vocabulary);
+    return vocabulary;
+  }
+
+  async deleteVocabulary(id: number): Promise<boolean> {
+    const exists = this.vocabularies.has(id);
+    if (exists) {
+      this.vocabularies.delete(id);
+      return true;
+    }
+    return false;
+  }
+
+  // Get vocabulary items due for review based on their next review time
+  async getVocabularyForReview(userId: number, limit: number = 20): Promise<Vocabulary[]> {
+    const now = new Date();
+    
+    return Array.from(this.vocabularies.values())
+      .filter(v => v.userId === userId && v.nextReview && new Date(v.nextReview) <= now)
+      .sort((a, b) => {
+        // Sort by review stage (lower stages first) and then by nextReview date (oldest first)
+        if (a.reviewStage !== b.reviewStage) {
+          return a.reviewStage - b.reviewStage;
+        }
+        return new Date(a.nextReview).getTime() - new Date(b.nextReview).getTime();
+      })
+      .slice(0, limit);
+  }
+
+  // Update the review stage and next review time based on the PACE method
+  async updateVocabularyReviewStatus(id: number, reviewStage: number): Promise<Vocabulary | undefined> {
+    const vocabulary = this.vocabularies.get(id);
+    if (!vocabulary) return undefined;
+
+    // Calculate the next review time based on the new review stage
+    const nextReview = new Date();
+    
+    // PACE repetition intervals:
+    // Stage 0: 1 day
+    // Stage 1: 3 days
+    // Stage 2: 7 days
+    // Stage 3: 14 days
+    // Stage 4: 30 days
+    // Stage 5+: 90 days
+    switch (reviewStage) {
+      case 0:
+        nextReview.setDate(nextReview.getDate() + 1); // 1 day
+        break;
+      case 1:
+        nextReview.setDate(nextReview.getDate() + 3); // 3 days
+        break;
+      case 2:
+        nextReview.setDate(nextReview.getDate() + 7); // 7 days
+        break;
+      case 3:
+        nextReview.setDate(nextReview.getDate() + 14); // 14 days
+        break;
+      case 4:
+        nextReview.setDate(nextReview.getDate() + 30); // 30 days
+        break;
+      default:
+        nextReview.setDate(nextReview.getDate() + 90); // 90 days
+        break;
+    }
+
+    const updatedVocabulary: Vocabulary = {
+      ...vocabulary,
+      reviewStage,
+      lastReviewed: new Date(),
+      nextReview
+    };
+
+    this.vocabularies.set(id, updatedVocabulary);
+    return updatedVocabulary;
+  }
 }
 
 export const storage = new MemStorage();
