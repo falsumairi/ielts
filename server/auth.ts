@@ -7,6 +7,7 @@ import { storage } from "./storage";
 import { User as SelectUser } from "@shared/schema";
 import { z } from "zod";
 import { sendEmail, emailTemplates, generateOTP } from "./utils/email";
+import { createWelcomeNotificationsForNewUser } from "./utils/notifications";
 
 declare global {
   namespace Express {
@@ -92,6 +93,14 @@ export function setupAuth(app: Express) {
         password: await hashPassword(validatedData.password),
         role: "test_taker", // Default role
       });
+
+      // Create welcome notifications for the new user
+      try {
+        await createWelcomeNotificationsForNewUser(user.id);
+      } catch (notificationError) {
+        console.error("Error creating welcome notifications:", notificationError);
+        // Continue with registration even if notifications fail
+      }
 
       // Remove password from response
       const userWithoutPassword = { ...user, password: undefined };
