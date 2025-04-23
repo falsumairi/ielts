@@ -139,7 +139,8 @@ export default function ForgotPassword() {
   // Resend OTP mutation
   const resendOtp = useMutation({
     mutationFn: async (email: string) => {
-      const response = await apiRequest("POST", "/api/resend-otp", { email });
+      // Reuse the password-reset/request endpoint since it does the same function
+      const response = await apiRequest("POST", "/api/password-reset/request", { email });
       return response.json();
     },
     onSuccess: () => {
@@ -175,8 +176,37 @@ export default function ForgotPassword() {
     requestPasswordReset.mutate(values);
   };
   
+  // Verify OTP before resetting password
+  const verifyOtp = useMutation({
+    mutationFn: async (data: { email: string, token: string }) => {
+      const response = await apiRequest("POST", "/api/password-reset/verify", data);
+      return response.json();
+    },
+    onSuccess: (data) => {
+      // If token is verified, proceed with password reset
+      const values = otpForm.getValues();
+      resetPasswordWithOtp.mutate({ 
+        otp: values.otp,
+        password: values.password,
+        confirmPassword: values.confirmPassword,
+        email 
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Invalid verification code",
+        description: "The code you entered is invalid or has expired. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const onOtpSubmit = (values: OtpVerificationValues) => {
-    resetPasswordWithOtp.mutate({ ...values, email });
+    // First verify the OTP
+    verifyOtp.mutate({ 
+      email, 
+      token: values.otp 
+    });
   };
   
   const handleResendOtp = () => {
@@ -354,12 +384,12 @@ export default function ForgotPassword() {
                   <Button
                     type="submit"
                     className="w-full"
-                    disabled={resetPasswordWithOtp.isPending}
+                    disabled={resetPasswordWithOtp.isPending || verifyOtp.isPending}
                   >
-                    {resetPasswordWithOtp.isPending ? (
+                    {resetPasswordWithOtp.isPending || verifyOtp.isPending ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Resetting Password...
+                        {verifyOtp.isPending ? "Verifying Code..." : "Resetting Password..."}
                       </>
                     ) : (
                       "Reset Password"
