@@ -1,18 +1,19 @@
 import { useState } from "react";
+import { Link } from "wouter";
+import { useAuth } from "@/hooks/use-auth";
+import { useTheme } from "@/components/ThemeProvider";
+import { Menu, Bell, Sun, Moon, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Bell, BookOpen, ChevronDown, GraduationCap, LineChart, Menu, Settings, UserCircle } from "lucide-react";
-import { Link, useLocation } from "wouter";
-import { useAuth } from "@/hooks/use-auth";
-import { ThemeToggle } from "@/components/ThemeProvider";
-import { UserRole } from "@shared/schema";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 
 interface HeaderProps {
   toggleSidebar: () => void;
@@ -20,13 +21,17 @@ interface HeaderProps {
 
 export default function Header({ toggleSidebar }: HeaderProps) {
   const { user, logoutMutation } = useAuth();
-  const [location] = useLocation();
+  const { theme, setTheme } = useTheme();
+  const [notifications] = useState<{ id: number; text: string }[]>([
+    { id: 1, text: "New test available" },
+    { id: 2, text: "Your speaking test has been graded" },
+  ]);
 
   const handleLogout = () => {
     logoutMutation.mutate();
   };
 
-  const getInitials = (name: string): string => {
+  const getInitials = (name: string) => {
     return name
       .split(" ")
       .map((n) => n[0])
@@ -35,91 +40,119 @@ export default function Header({ toggleSidebar }: HeaderProps) {
   };
 
   return (
-    <header className="bg-white shadow-md sticky top-0 z-50">
-      <div className="container-wide py-3 flex justify-between items-center">
-        <div className="flex items-center space-x-3">
-          <div className="h-10 w-10 rounded-md bg-gradient-to-r from-primary to-secondary flex-center text-white text-lg font-bold">
-            <GraduationCap className="h-6 w-6" />
-          </div>
-          <span className="text-xl font-bold gradient-text">IELTS Exam</span>
-        </div>
-
-        {/* Desktop navigation */}
-        <nav className="hidden md:flex items-center space-x-8">
-          <Link href="/" className={`flex items-center space-x-2 font-medium hover:text-primary transition duration-300 ${location === "/" ? "text-primary" : ""}`}>
-            <BookOpen className="h-4 w-4" />
-            <span>Dashboard</span>
-          </Link>
-          <Link href="/results" className={`flex items-center space-x-2 font-medium hover:text-primary transition duration-300 ${location === "/results" ? "text-primary" : ""}`}>
-            <LineChart className="h-4 w-4" />
-            <span>My Results</span>
-          </Link>
-          {user?.role === UserRole.ADMIN && (
-            <Link href="/admin" className={`flex items-center space-x-2 font-medium hover:text-primary transition duration-300 ${location.startsWith("/admin") ? "text-primary" : ""}`}>
-              <Settings className="h-4 w-4" />
-              <span>Admin</span>
-            </Link>
-          )}
-        </nav>
-
-        <div className="flex items-center space-x-4">
-          <ThemeToggle />
-          
-          <Button variant="ghost" size="icon" className="relative text-neutral-dark hover:bg-neutral-bg transition-all" aria-label="Notifications">
-            <Bell className="h-5 w-5" />
-            <span className="absolute top-1 right-1 block h-2 w-2 rounded-full bg-destructive animate-pulse"></span>
-          </Button>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="flex items-center space-x-2 focus:ring-2 focus:ring-primary/20 focus:ring-offset-2 transition-all">
-                <Avatar className="h-9 w-9 border-2 border-primary/20">
-                  <AvatarImage src="" alt={user?.username} />
-                  <AvatarFallback className="bg-gradient-to-r from-primary to-secondary text-white">
-                    {user?.username ? getInitials(user.username) : "U"}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="hidden md:block text-left">
-                  <p className="text-sm font-medium leading-none">{user?.username}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{user?.role || "Test Taker"}</p>
-                </div>
-                <ChevronDown className="h-4 w-4 text-neutral-dark hidden md:block" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 p-2">
-              <div className="flex flex-col space-y-1 p-2 md:hidden">
-                <p className="text-sm font-medium">{user?.username}</p>
-                <p className="text-xs text-muted-foreground">{user?.role || "Test Taker"}</p>
-              </div>
-              <DropdownMenuItem asChild className="flex items-center gap-2 p-2 cursor-pointer">
-                <Link href="/profile" className="w-full">
-                  <UserCircle className="h-4 w-4 mr-2" />
-                  Your Profile
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild className="flex items-center gap-2 p-2 cursor-pointer">
-                <Link href="/settings" className="w-full">
-                  <Settings className="h-4 w-4 mr-2" />
-                  Settings
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-destructive cursor-pointer p-2 hover:bg-destructive/10" onClick={handleLogout}>
-                Sign out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-
-        {/* Mobile menu button */}
+    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-background px-4 md:px-6">
+      <div className="flex items-center gap-2 md:gap-4">
         <Button
           variant="ghost"
           size="icon"
           className="md:hidden"
           onClick={toggleSidebar}
         >
-          <Menu className="h-6 w-6" />
+          <Menu className="h-5 w-5" />
+          <span className="sr-only">Toggle sidebar</span>
         </Button>
+        <Link href="/" className="hidden md:flex items-center gap-2">
+          <img
+            src="/logo.svg"
+            alt="IELTS Exam"
+            className="h-8 w-8"
+          />
+          <span className="text-xl font-bold bg-gradient-to-r from-blue-500 to-purple-600 bg-clip-text text-transparent">
+            IELTS Exam
+          </span>
+        </Link>
+      </div>
+      <div className="flex items-center gap-4">
+        {/* Theme toggle */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+        >
+          {theme === "dark" ? (
+            <Sun className="h-5 w-5" />
+          ) : (
+            <Moon className="h-5 w-5" />
+          )}
+          <span className="sr-only">Toggle theme</span>
+        </Button>
+
+        {/* Notifications */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="relative">
+              <Bell className="h-5 w-5" />
+              {notifications.length > 0 && (
+                <Badge
+                  className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center bg-primary text-primary-foreground text-xs"
+                  variant="default"
+                >
+                  {notifications.length}
+                </Badge>
+              )}
+              <span className="sr-only">Notifications</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>Notifications</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {notifications.map((notification) => (
+              <DropdownMenuItem key={notification.id}>
+                {notification.text}
+              </DropdownMenuItem>
+            ))}
+            {notifications.length === 0 && (
+              <DropdownMenuItem disabled>
+                No new notifications
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem>
+              View all notifications
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* User menu */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="rounded-full overflow-hidden"
+            >
+              <Avatar>
+                <AvatarFallback className="bg-primary text-primary-foreground">
+                  {user?.username ? getInitials(user.username) : <User className="h-5 w-5" />}
+                </AvatarFallback>
+              </Avatar>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>
+              <div className="flex flex-col">
+                <span>{user?.username}</span>
+                <span className="text-xs text-muted-foreground">{user?.email}</span>
+              </div>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link href="/profile">Profile</Link>
+            </DropdownMenuItem>
+            {user?.role === "admin" && (
+              <DropdownMenuItem asChild>
+                <Link href="/admin/dashboard">Admin Dashboard</Link>
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem asChild>
+              <Link href="/settings">Settings</Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={handleLogout} className="text-destructive">
+              Sign Out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </header>
   );

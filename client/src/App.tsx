@@ -16,6 +16,7 @@ import WritingTest from "@/pages/writing-test";
 import Results from "@/pages/results";
 import AdminDashboard from "@/pages/admin/dashboard";
 import AdminResults from "@/pages/admin/results";
+import AdminTests from "@/pages/admin/tests";
 import ForgotPassword from "@/pages/forgot-password";
 import VerifyEmail from "@/pages/verify-email";
 
@@ -28,6 +29,7 @@ function Router() {
       
       {/* User Routes */}
       <ProtectedRoute path="/" component={Dashboard} />
+      <ProtectedRoute path="/dashboard" component={Dashboard} />
       <ProtectedRoute path="/tests/reading/:id" component={ReadingTest} />
       <ProtectedRoute path="/tests/listening/:id" component={ListeningTest} />
       <ProtectedRoute path="/tests/speaking/:id" component={SpeakingTest} />
@@ -36,7 +38,9 @@ function Router() {
       
       {/* Admin Routes */}
       <ProtectedRoute path="/admin" component={AdminDashboard} adminOnly={true} />
+      <ProtectedRoute path="/admin/dashboard" component={AdminDashboard} adminOnly={true} />
       <ProtectedRoute path="/admin/results" component={AdminResults} adminOnly={true} />
+      <ProtectedRoute path="/admin/tests" component={AdminTests} adminOnly={true} />
       
       {/* Fallback to 404 */}
       <Route component={NotFound} />

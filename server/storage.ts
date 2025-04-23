@@ -21,15 +21,18 @@ export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
+  getAllUsers(): Promise<User[]>;
   createUser(user: InsertUser): Promise<User>;
   updateUserVerificationStatus(id: number, verified: boolean): Promise<User | undefined>;
   updateUserPassword(id: number, newPassword: string): Promise<User | undefined>;
+  updateUserRole(id: number, role: string): Promise<User | undefined>;
   
   // Tests
   getAllTests(): Promise<Test[]>;
   getTestsByModule(module: TestModule): Promise<Test[]>;
   getTest(id: number): Promise<Test | undefined>;
   createTest(test: InsertTest): Promise<Test>;
+  updateTest(id: number, test: Partial<Test>): Promise<Test | undefined>;
   
   // Questions
   getQuestionsForTest(testId: number): Promise<Question[]>;
@@ -132,6 +135,10 @@ export class MemStorage implements IStorage {
     );
   }
   
+  async getAllUsers(): Promise<User[]> {
+    return Array.from(this.users.values());
+  }
+  
   async updateUserVerificationStatus(id: number, verified: boolean): Promise<User | undefined> {
     const user = this.users.get(id);
     if (!user) return undefined;
@@ -160,6 +167,19 @@ export class MemStorage implements IStorage {
     return updatedUser;
   }
 
+  async updateUserRole(id: number, role: string): Promise<User | undefined> {
+    const user = this.users.get(id);
+    if (!user) return undefined;
+    
+    const updatedUser: User = {
+      ...user,
+      role: role
+    };
+    
+    this.users.set(id, updatedUser);
+    return updatedUser;
+  }
+
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = this.currentUserId++;
     // Add required role property with a default if not provided
@@ -168,6 +188,7 @@ export class MemStorage implements IStorage {
       ...insertUser, 
       id, 
       role, // Ensure role is always defined
+      verified: insertUser.verified !== undefined ? insertUser.verified : false,
       createdAt: new Date() 
     };
     this.users.set(id, user);
@@ -196,6 +217,19 @@ export class MemStorage implements IStorage {
       active: insertTest.active || null,
       createdAt: new Date() 
     };
+    this.tests.set(id, test);
+    return test;
+  }
+
+  async updateTest(id: number, updatedTest: Partial<Test>): Promise<Test | undefined> {
+    const existingTest = this.tests.get(id);
+    if (!existingTest) return undefined;
+    
+    const test: Test = { 
+      ...existingTest, 
+      ...updatedTest 
+    };
+    
     this.tests.set(id, test);
     return test;
   }

@@ -2,10 +2,13 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth } from "./auth";
-import { TestModule, UserRole } from "@shared/schema";
+import { TestModule, UserRole, QuestionType } from "@shared/schema";
 import helmet from "helmet";
 import { z } from "zod";
 import { sendEmail, generateOTP, emailTemplates } from "./utils/email";
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 
 // Middleware to check if user is authenticated
 const isAuthenticated = (req: Request, res: Response, next: Function) => {
@@ -86,7 +89,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const test = await storage.createTest(validatedData);
       res.status(201).json(test);
     } catch (error) {
-      res.status(400).send(`Invalid test data: ${error.message}`);
+      res.status(400).send(`Invalid test data: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  });
+  
+  // Update test
+  app.patch("/api/tests/:id", isAdmin, async (req, res) => {
+    const testId = parseInt(req.params.id);
+    if (isNaN(testId)) {
+      return res.status(400).send("Invalid test ID");
+    }
+    
+    try {
+      const testSchema = z.object({
+        title: z.string().min(1).optional(),
+        description: z.string().optional(),
+        durationMinutes: z.number().positive().optional(),
+        active: z.boolean().optional(),
+      });
+      
+      const validatedData = testSchema.parse(req.body);
+      const updatedTest = await storage.updateTest(testId, validatedData);
+      
+      if (!updatedTest) {
+        return res.status(404).send("Test not found");
+      }
+      
+      res.json(updatedTest);
+    } catch (error) {
+      res.status(400).send(`Invalid test data: ${error instanceof Error ? error.message : String(error)}`);
     }
   });
 
@@ -445,10 +476,487 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(updatedAnswer);
   });
 
+  // Admin routes
+  // Get all users (admin only)
+  app.get("/api/admin/users", isAdmin, async (req, res) => {
+    const users = await storage.getAllUsers();
+    res.json(users);
+  });
+
+  // Verify a user (admin only)
+  app.patch("/api/admin/users/:id/verify", isAdmin, async (req, res) => {
+    const userId = parseInt(req.params.id);
+    if (isNaN(userId)) {
+      return res.status(400).send("Invalid user ID");
+    }
+
+    try {
+      const verifySchema = z.object({
+        verified: z.boolean(),
+      });
+
+      const validatedData = verifySchema.parse(req.body);
+      const updatedUser = await storage.updateUserVerificationStatus(userId, validatedData.verified);
+      
+      if (!updatedUser) {
+        return res.status(404).send("User not found");
+      }
+      
+      res.json(updatedUser);
+    } catch (error) {
+      if (error instanceof Error) {
+        res.status(400).send(`Invalid update: ${error.message}`);
+      } else {
+        res.status(400).send("Invalid update");
+      }
+    }
+  });
+
+  // Update user role (admin only)
+  app.patch("/api/admin/users/:id/role", isAdmin, async (req, res) => {
+    const userId = parseInt(req.params.id);
+    if (isNaN(userId)) {
+      return res.status(400).send("Invalid user ID");
+    }
+
+    try {
+      const roleSchema = z.object({
+        role: z.enum([UserRole.ADMIN, UserRole.TEST_TAKER]),
+      });
+
+      const validatedData = roleSchema.parse(req.body);
+      const updatedUser = await storage.updateUserRole(userId, validatedData.role);
+      
+      if (!updatedUser) {
+        return res.status(404).send("User not found");
+      }
+      
+      res.json(updatedUser);
+    } catch (error) {
+      if (error instanceof Error) {
+        res.status(400).send(`Invalid update: ${error.message}`);
+      } else {
+        res.status(400).send("Invalid update");
+      }
+    }
+  });
+
+  // Test Management Routes (Admin Only)
+  
+  // Get all tests
+  app.get("/api/admin/tests", isAdmin, async (req, res) => {
+    try {
+      const tests = await storage.getAllTests();
+      
+      // Get additional stats like questions count
+      const testsWithStats = await Promise.all(tests.map(async (test) => {
+        const questions = await storage.getQuestionsForTest(test.id);
+        const passages = test.module === TestModule.READING 
+          ? await storage.getPassagesForTest(test.id)
+          : [];
+          
+        return {
+          ...test,
+          questionsCount: questions.length,
+          passagesCount: passages.length
+        };
+      }));
+      
+      res.json(testsWithStats);
+    } catch (error) {
+      console.error("Error fetching tests:", error);
+      res.status(500).json({ error: "Failed to fetch tests" });
+    }
+  });
+
+  // Get a specific test
+  app.get("/api/admin/tests/:id", isAdmin, async (req, res) => {
+    const testId = parseInt(req.params.id);
+    if (isNaN(testId)) {
+      return res.status(400).json({ error: "Invalid test ID" });
+    }
+
+    try {
+      const test = await storage.getTest(testId);
+      if (!test) {
+        return res.status(404).json({ error: "Test not found" });
+      }
+
+      const questions = await storage.getQuestionsForTest(testId);
+      const passages = test.module === TestModule.READING 
+        ? await storage.getPassagesForTest(testId)
+        : [];
+
+      res.json({
+        ...test,
+        questions,
+        passages
+      });
+    } catch (error) {
+      console.error("Error fetching test:", error);
+      res.status(500).json({ error: "Failed to fetch test" });
+    }
+  });
+
+  // Create a new test
+  app.post("/api/admin/tests", isAdmin, async (req, res) => {
+    try {
+      const testSchema = z.object({
+        title: z.string().min(3),
+        description: z.string().optional(),
+        module: z.enum([
+          TestModule.READING, 
+          TestModule.LISTENING, 
+          TestModule.WRITING, 
+          TestModule.SPEAKING
+        ]),
+        durationMinutes: z.number().min(1),
+        active: z.boolean().default(true),
+      });
+
+      const validatedData = testSchema.parse(req.body);
+      const newTest = await storage.createTest(validatedData);
+      
+      res.status(201).json(newTest);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error creating test:", error);
+      res.status(500).json({ error: "Failed to create test" });
+    }
+  });
+
+  // Update a test
+  app.patch("/api/admin/tests/:id", isAdmin, async (req, res) => {
+    const testId = parseInt(req.params.id);
+    if (isNaN(testId)) {
+      return res.status(400).json({ error: "Invalid test ID" });
+    }
+
+    try {
+      const testSchema = z.object({
+        title: z.string().min(3).optional(),
+        description: z.string().optional(),
+        module: z.enum([
+          TestModule.READING, 
+          TestModule.LISTENING, 
+          TestModule.WRITING, 
+          TestModule.SPEAKING
+        ]).optional(),
+        durationMinutes: z.number().min(1).optional(),
+        active: z.boolean().optional(),
+      });
+
+      const validatedData = testSchema.parse(req.body);
+      const test = await storage.getTest(testId);
+      
+      if (!test) {
+        return res.status(404).json({ error: "Test not found" });
+      }
+
+      const updatedTest = await storage.updateTest(testId, {
+        ...test,
+        ...validatedData
+      });
+      
+      res.json(updatedTest);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error updating test:", error);
+      res.status(500).json({ error: "Failed to update test" });
+    }
+  });
+
+  // Add a question to a test
+  app.post("/api/admin/tests/:id/questions", isAdmin, async (req, res) => {
+    const testId = parseInt(req.params.id);
+    if (isNaN(testId)) {
+      return res.status(400).json({ error: "Invalid test ID" });
+    }
+
+    try {
+      const questionSchema = z.object({
+        type: z.enum([
+          QuestionType.MULTIPLE_CHOICE,
+          QuestionType.TRUE_FALSE_NG,
+          QuestionType.FILL_BLANK,
+          QuestionType.MATCHING,
+          QuestionType.SHORT_ANSWER,
+          QuestionType.ESSAY, 
+          QuestionType.SPEAKING
+        ]),
+        content: z.string().min(3),
+        options: z.any().optional(),
+        correctAnswer: z.string().optional(),
+        audioPath: z.string().optional(),
+        passageIndex: z.number().optional(),
+      });
+
+      const validatedData = questionSchema.parse(req.body);
+      
+      // Check if the test exists
+      const test = await storage.getTest(testId);
+      if (!test) {
+        return res.status(404).json({ error: "Test not found" });
+      }
+
+      const newQuestion = await storage.createQuestion({
+        ...validatedData,
+        testId
+      });
+      
+      res.status(201).json(newQuestion);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error creating question:", error);
+      res.status(500).json({ error: "Failed to create question" });
+    }
+  });
+
+  // Add a reading passage to a test
+  app.post("/api/admin/tests/:id/passages", isAdmin, async (req, res) => {
+    const testId = parseInt(req.params.id);
+    if (isNaN(testId)) {
+      return res.status(400).json({ error: "Invalid test ID" });
+    }
+
+    try {
+      const passageSchema = z.object({
+        title: z.string().min(3),
+        content: z.string().min(10),
+        index: z.number().min(1),
+      });
+
+      const validatedData = passageSchema.parse(req.body);
+      
+      // Check if the test exists and is a reading test
+      const test = await storage.getTest(testId);
+      if (!test) {
+        return res.status(404).json({ error: "Test not found" });
+      }
+      
+      if (test.module !== TestModule.READING) {
+        return res.status(400).json({ 
+          error: "Passages can only be added to reading tests" 
+        });
+      }
+
+      const newPassage = await storage.createPassage({
+        ...validatedData,
+        testId
+      });
+      
+      res.status(201).json(newPassage);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error creating passage:", error);
+      res.status(500).json({ error: "Failed to create passage" });
+    }
+  });
+
+  // File upload middleware
+
+  // Create upload directories if they don't exist
+  const moduleURL = new URL(import.meta.url);
+  const dirname = path.dirname(moduleURL.pathname);
+  const uploadDir = path.join(dirname, '../uploads');
+  const audioDir = path.join(uploadDir, 'audio');
+  const imagesDir = path.join(uploadDir, 'images');
+
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir);
+  }
+  if (!fs.existsSync(audioDir)) {
+    fs.mkdirSync(audioDir);
+  }
+  if (!fs.existsSync(imagesDir)) {
+    fs.mkdirSync(imagesDir);
+  }
+
+  // Configure audio storage
+  const audioStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+      cb(null, audioDir);
+    },
+    filename: (req, file, cb) => {
+      const testId = req.params.id;
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      const ext = path.extname(file.originalname);
+      cb(null, `test-${testId}-${uniqueSuffix}${ext}`);
+    }
+  });
+
+  // Configure image storage
+  const imageStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+      cb(null, imagesDir);
+    },
+    filename: (req, file, cb) => {
+      const testId = req.params.id;
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      const ext = path.extname(file.originalname);
+      cb(null, `test-${testId}-${uniqueSuffix}${ext}`);
+    }
+  });
+
+  // Create upload instances
+  const uploadAudio = multer({ 
+    storage: audioStorage,
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+    fileFilter: (req, file, cb) => {
+      const allowedMimes = ['audio/mp3', 'audio/mpeg', 'audio/wav'];
+      if (allowedMimes.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error('Invalid file type. Only MP3 and WAV files are allowed.'), false);
+      }
+    }
+  });
+
+  const uploadImage = multer({ 
+    storage: imageStorage,
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+    fileFilter: (req, file, cb) => {
+      const allowedMimes = ['image/jpeg', 'image/png', 'image/jpg'];
+      if (allowedMimes.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error('Invalid file type. Only JPG and PNG files are allowed.'), false);
+      }
+    }
+  });
+
+  // Upload audio file
+  app.post('/api/admin/tests/:id/audio/upload', isAdmin, uploadAudio.single('file'), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+
+      // Save the audio path in the database or return to client
+      const relativePath = path.relative(path.join(dirname, '..'), req.file.path);
+      
+      // Remove leading "../" if present in the path
+      const cleanPath = relativePath.replace(/^\.\.\//, '');
+      
+      res.json({ 
+        success: true, 
+        path: cleanPath,
+        filename: req.file.filename,
+        size: req.file.size
+      });
+    } catch (error) {
+      console.error('Error uploading audio file:', error);
+      res.status(500).json({ error: 'Failed to upload audio file' });
+    }
+  });
+
+  // Upload image file
+  app.post('/api/admin/tests/:id/images/upload', isAdmin, uploadImage.single('file'), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+
+      // Save the image path in the database or return to client
+      const relativePath = path.relative(path.join(dirname, '..'), req.file.path);
+      
+      // Remove leading "../" if present in the path
+      const cleanPath = relativePath.replace(/^\.\.\//, '');
+      
+      res.json({ 
+        success: true, 
+        path: cleanPath,
+        filename: req.file.filename,
+        size: req.file.size
+      });
+    } catch (error) {
+      console.error('Error uploading image file:', error);
+      res.status(500).json({ error: 'Failed to upload image file' });
+    }
+  });
+
+  // Bulk upload questions (from JSON file)
+  const uploadJSON = multer({ 
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 2 * 1024 * 1024 }, // 2MB limit
+    fileFilter: (req, file, cb) => {
+      if (file.mimetype === 'application/json') {
+        cb(null, true);
+      } else {
+        cb(new Error('Invalid file type. Only JSON files are allowed.'), false);
+      }
+    }
+  });
+
+  app.post('/api/admin/tests/:id/questions/upload', isAdmin, uploadJSON.single('file'), async (req, res) => {
+    const testId = parseInt(req.params.id);
+    if (isNaN(testId)) {
+      return res.status(400).json({ error: "Invalid test ID" });
+    }
+
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+
+      // Check if the test exists
+      const test = await storage.getTest(testId);
+      if (!test) {
+        return res.status(404).json({ error: "Test not found" });
+      }
+
+      // Parse JSON file
+      const questionsData = JSON.parse(req.file.buffer.toString());
+      
+      if (!Array.isArray(questionsData)) {
+        return res.status(400).json({ error: 'Invalid format. Expected an array of questions.' });
+      }
+
+      // Create questions
+      const createdQuestions = [];
+      
+      for (const questionData of questionsData) {
+        try {
+          // Add testId to each question
+          const newQuestion = await storage.createQuestion({
+            ...questionData,
+            testId
+          });
+          
+          createdQuestions.push(newQuestion);
+        } catch (error) {
+          console.error('Error creating question:', error);
+          // Continue with other questions if one fails
+        }
+      }
+
+      res.json({ 
+        success: true, 
+        count: createdQuestions.length,
+        questions: createdQuestions
+      });
+    } catch (error) {
+      console.error('Error uploading questions:', error);
+      res.status(500).json({ error: 'Failed to upload questions' });
+    }
+  });
+
   // Admin dashboard stats
   app.get("/api/admin/stats", isAdmin, async (req, res) => {
     const tests = await storage.getAllTests();
     const testCount = tests.length;
+    
+    // Get all users count
+    const users = await storage.getAllUsers();
+    const userCount = users.length;
     
     // For each module, get attempt counts
     const readingTests = await storage.getTestsByModule(TestModule.READING);
@@ -480,10 +988,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const attempts = await storage.getAttemptsForTest(test.id);
       speakingAttempts += attempts.length;
     }
-    
-    // Get all users count
-    const allUsers = Array.from(new Array(storage.currentUserId - 1)).map((_, i) => i + 1);
-    const userCount = allUsers.length;
     
     res.json({
       testCount,
