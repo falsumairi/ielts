@@ -1362,6 +1362,149 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // AI-assisted scoring routes
+  
+  // Route for scoring writing responses
+  app.post("/api/score/writing", isAuthenticated, async (req, res) => {
+    try {
+      const schema = z.object({
+        promptId: z.number().optional(),
+        prompt: z.string(),
+        response: z.string().min(1, "Response is required"),
+        attemptId: z.number().optional(),
+        answerId: z.number().optional()
+      });
+
+      const data = schema.parse(req.body);
+      
+      // Use OpenAI to score the writing response
+      const result = await scoreWritingResponse(data.prompt, data.response);
+
+      // If an answerId was provided, update the answer with the score
+      if (data.answerId) {
+        const answer = await storage.getAnswer(data.answerId);
+        if (answer) {
+          // Check if user is authorized to update this answer
+          if (answer.userId === req.user?.id || req.user?.role === UserRole.ADMIN) {
+            await storage.updateAnswer(
+              data.answerId, 
+              true, // isCorrect
+              result.overallScore, 
+              result.feedback, 
+              null // gradedBy (AI graded)
+            );
+          }
+        }
+      }
+
+      // If an attemptId was provided, update the attempt score
+      if (data.attemptId) {
+        const attempt = await storage.getAttempt(data.attemptId);
+        if (attempt && (attempt.userId === req.user?.id || req.user?.role === UserRole.ADMIN)) {
+          await storage.updateAttemptStatus(
+            data.attemptId,
+            "completed",
+            new Date(),
+            result.overallScore
+          );
+        }
+      }
+
+      res.json({
+        success: true,
+        score: result.overallScore,
+        criteriaScores: result.criteriaScores,
+        feedback: result.feedback
+      });
+    } catch (error) {
+      console.error("Error scoring writing response:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to score writing response"
+      });
+    }
+  });
+
+  // Route for scoring speaking responses (with audio upload)
+  const audioUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+    fileFilter: (req, file, cb) => {
+      const allowedMimes = ['audio/mp3', 'audio/mpeg', 'audio/wav'];
+      if (allowedMimes.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(null, false);
+        return cb(new Error('Only MP3 and WAV formats are allowed'));
+      }
+    }
+  });
+
+  app.post("/api/score/speaking", isAuthenticated, audioUpload.single('audio'), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No audio file uploaded" });
+      }
+
+      const promptSchema = z.object({
+        promptId: z.number().optional(),
+        prompt: z.string(),
+        attemptId: z.number().optional(),
+        answerId: z.number().optional()
+      });
+
+      const data = promptSchema.parse(req.body);
+      
+      // Transcribe the audio
+      const transcription = await transcribeSpeakingAudio(req.file.buffer);
+      
+      // Score the transcribed response
+      const result = await scoreSpeakingResponse(data.prompt, transcription);
+
+      // If an answerId was provided, update the answer with the score
+      if (data.answerId) {
+        const answer = await storage.getAnswer(data.answerId);
+        if (answer) {
+          // Check if user is authorized to update this answer
+          if (answer.userId === req.user?.id || req.user?.role === UserRole.ADMIN) {
+            await storage.updateAnswer(
+              data.answerId, 
+              true, // isCorrect
+              result.overallScore, 
+              result.feedback, 
+              null // gradedBy (AI graded)
+            );
+          }
+        }
+      }
+
+      // If an attemptId was provided, update the attempt score
+      if (data.attemptId) {
+        const attempt = await storage.getAttempt(data.attemptId);
+        if (attempt && (attempt.userId === req.user?.id || req.user?.role === UserRole.ADMIN)) {
+          await storage.updateAttemptStatus(
+            data.attemptId,
+            "completed",
+            new Date(),
+            result.overallScore
+          );
+        }
+      }
+
+      res.json({
+        success: true,
+        transcription,
+        score: result.overallScore,
+        criteriaScores: result.criteriaScores,
+        feedback: result.feedback
+      });
+    } catch (error) {
+      console.error("Error scoring speaking response:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to score speaking response"
+      });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

@@ -1,4 +1,7 @@
 import OpenAI from "openai";
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 
 // Initialize OpenAI client
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -33,6 +36,8 @@ export async function scoreWritingResponse(
   feedback: string;
 }> {
   try {
+    const promptText = prompt || "No prompt provided";
+  
     const completion = await openai.chat.completions.create({
       model: GPT_MODEL,
       messages: [
@@ -58,13 +63,15 @@ export async function scoreWritingResponse(
         },
         {
           role: "user",
-          content: `WRITING PROMPT: ${prompt}\n\nCANDIDATE RESPONSE: ${response}`
+          content: `WRITING PROMPT: ${promptText}\n\nCANDIDATE RESPONSE: ${response}`
         }
       ],
       response_format: { type: "json_object" }
     });
 
-    const result = JSON.parse(completion.choices[0].message.content);
+    const content = completion.choices[0].message.content || '{"overallScore":0,"criteriaScores":{},"feedback":"Failed to generate feedback"}';
+    const result = JSON.parse(content);
+    
     return {
       overallScore: result.overallScore,
       criteriaScores: result.criteriaScores,
@@ -81,11 +88,25 @@ export async function transcribeSpeakingAudio(
   audioBuffer: Buffer
 ): Promise<string> {
   try {
+    // Create a temporary file to hold the audio data
+    const tempFilePath = path.join(os.tmpdir(), `speech-${Date.now()}.mp3`);
+    
+    // Write the buffer to a temporary file
+    fs.writeFileSync(tempFilePath, audioBuffer);
+    
+    // Use the file path with OpenAI
     const transcription = await openai.audio.transcriptions.create({
-      file: new Blob([audioBuffer], { type: 'audio/mp3' }),
+      file: fs.createReadStream(tempFilePath),
       model: "whisper-1",
       language: "en",
     });
+    
+    // Clean up the temporary file
+    try {
+      fs.unlinkSync(tempFilePath);
+    } catch (cleanupError) {
+      console.error("Error cleaning up temp file:", cleanupError);
+    }
 
     return transcription.text;
   } catch (error) {
@@ -104,6 +125,8 @@ export async function scoreSpeakingResponse(
   feedback: string;
 }> {
   try {
+    const promptText = prompt || "No prompt provided";
+    
     const completion = await openai.chat.completions.create({
       model: GPT_MODEL,
       messages: [
@@ -129,13 +152,15 @@ export async function scoreSpeakingResponse(
         },
         {
           role: "user",
-          content: `SPEAKING PROMPT: ${prompt}\n\nTRANSCRIPTION OF CANDIDATE RESPONSE: ${transcription}`
+          content: `SPEAKING PROMPT: ${promptText}\n\nTRANSCRIPTION OF CANDIDATE RESPONSE: ${transcription}`
         }
       ],
       response_format: { type: "json_object" }
     });
 
-    const result = JSON.parse(completion.choices[0].message.content);
+    const content = completion.choices[0].message.content || '{"overallScore":0,"criteriaScores":{},"feedback":"Failed to generate feedback"}';
+    const result = JSON.parse(content);
+    
     return {
       overallScore: result.overallScore,
       criteriaScores: result.criteriaScores,
