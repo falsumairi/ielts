@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation, useParams } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Test, Question, QuestionType } from "@shared/schema";
@@ -8,7 +8,26 @@ import ExamTimer from "@/components/ExamTimer";
 import TextEditor from "@/components/TextEditor";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { 
+  AlertCircle, 
+  ChevronLeft, 
+  ChevronRight, 
+  Loader2, 
+  Brain, 
+  BadgeCheck,
+  Star,
+  Info
+} from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogClose
+} from "@/components/ui/dialog";
+import { Progress } from "@/components/ui/progress";
 
 export default function WritingTest() {
   const { id } = useParams<{ id: string }>();
@@ -26,6 +45,11 @@ export default function WritingTest() {
   const [wordCounts, setWordCounts] = useState<Record<number, number>>({});
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [testEnded, setTestEnded] = useState(false);
+  
+  // AI Scoring state
+  const [showAIScoreDialog, setShowAIScoreDialog] = useState(false);
+  const [scoringTaskId, setScoringTaskId] = useState<number | null>(null);
+  const [aiScoreResult, setAiScoreResult] = useState<any>(null);
   
   // Fetch test details
   const { data: test, isLoading: isLoadingTest } = useQuery<Test>({
@@ -137,6 +161,38 @@ export default function WritingTest() {
     },
   });
   
+  // AI Scoring mutation
+  const aiScoreMutation = useMutation({
+    mutationFn: async ({ 
+      prompt, 
+      response, 
+      answerId 
+    }: { 
+      prompt: string; 
+      response: string; 
+      answerId: number;
+    }) => {
+      const res = await apiRequest("POST", "/api/writing/score", {
+        prompt,
+        response,
+        answerId
+      });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setAiScoreResult(data);
+      queryClient.invalidateQueries({ queryKey: ["/api/attempts", attemptId, "answers"] });
+    },
+    onError: (error) => {
+      toast({
+        title: "AI Scoring Failed",
+        description: "Could not generate AI feedback for your essay",
+        variant: "destructive",
+      });
+      setShowAIScoreDialog(false);
+    },
+  });
+  
   // Handle answer change
   const handleAnswerChange = (questionId: number, text: string) => {
     setAnswers((prev) => ({ ...prev, [questionId]: text }));
@@ -165,6 +221,50 @@ export default function WritingTest() {
         setTestEnded(true);
         completeTestMutation.mutate();
       }
+    }
+  };
+  
+  // Handle AI score request
+  const handleRequestAIScore = (questionId: number) => {
+    const question = questions?.find(q => q.id === questionId);
+    const answerText = answers[questionId];
+    
+    if (question && answerText) {
+      // Check if answer meets minimum word count
+      const minWords = question.passageIndex === 1 ? 150 : 250;
+      const wordCount = wordCounts[questionId] || 0;
+      
+      if (wordCount < minWords) {
+        toast({
+          title: "Word Count Too Low",
+          description: `Your essay should be at least ${minWords} words to receive AI scoring.`,
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // Get the answer ID from existing answers
+      const answerId = existingAnswers?.find(a => a.questionId === questionId)?.id;
+      
+      if (!answerId) {
+        toast({
+          title: "Error",
+          description: "Please save your essay first before requesting AI feedback.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      setScoringTaskId(questionId);
+      setShowAIScoreDialog(true);
+      setAiScoreResult(null);
+      
+      // Trigger AI scoring
+      aiScoreMutation.mutate({
+        prompt: question.content,
+        response: answerText,
+        answerId
+      });
     }
   };
   
@@ -242,13 +342,26 @@ export default function WritingTest() {
             
             {task1Question && (
               <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-                <TextEditor
-                  initialContent={answers[task1Question.id] || ""}
-                  placeholder="Write your response to Task 1 here..."
-                  minWords={getMinWords("1")}
-                  onChange={(text) => handleAnswerChange(task1Question.id, text)}
-                  onWordCountChange={(count) => handleWordCountChange(task1Question.id, count)}
-                />
+                <div>
+                  <TextEditor
+                    initialContent={answers[task1Question.id] || ""}
+                    placeholder="Write your response to Task 1 here..."
+                    minWords={getMinWords("1")}
+                    onChange={(text) => handleAnswerChange(task1Question.id, text)}
+                    onWordCountChange={(count) => handleWordCountChange(task1Question.id, count)}
+                  />
+                  <div className="flex justify-end mt-4">
+                    <Button
+                      variant="outline"
+                      className="flex items-center"
+                      onClick={() => handleRequestAIScore(task1Question.id)}
+                      disabled={!answers[task1Question.id] || (wordCounts[task1Question.id] || 0) < getMinWords("1")}
+                    >
+                      <Brain className="h-4 w-4 mr-2" />
+                      Get AI Feedback
+                    </Button>
+                  </div>
+                </div>
               </div>
             )}
           </TabsContent>
@@ -282,13 +395,26 @@ export default function WritingTest() {
             
             {task2Question && (
               <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-                <TextEditor
-                  initialContent={answers[task2Question.id] || ""}
-                  placeholder="Write your response to Task 2 here..."
-                  minWords={getMinWords("2")}
-                  onChange={(text) => handleAnswerChange(task2Question.id, text)}
-                  onWordCountChange={(count) => handleWordCountChange(task2Question.id, count)}
-                />
+                <div>
+                  <TextEditor
+                    initialContent={answers[task2Question.id] || ""}
+                    placeholder="Write your response to Task 2 here..."
+                    minWords={getMinWords("2")}
+                    onChange={(text) => handleAnswerChange(task2Question.id, text)}
+                    onWordCountChange={(count) => handleWordCountChange(task2Question.id, count)}
+                  />
+                  <div className="flex justify-end mt-4">
+                    <Button
+                      variant="outline"
+                      className="flex items-center"
+                      onClick={() => handleRequestAIScore(task2Question.id)}
+                      disabled={!answers[task2Question.id] || (wordCounts[task2Question.id] || 0) < getMinWords("2")}
+                    >
+                      <Brain className="h-4 w-4 mr-2" />
+                      Get AI Feedback
+                    </Button>
+                  </div>
+                </div>
               </div>
             )}
           </TabsContent>
@@ -329,6 +455,81 @@ export default function WritingTest() {
           </Button>
         </div>
       </div>
+      
+      {/* AI Score Dialog */}
+      <Dialog open={showAIScoreDialog} onOpenChange={setShowAIScoreDialog}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <Brain className="h-5 w-5 mr-2 text-primary" />
+              AI Writing Assessment
+            </DialogTitle>
+            <DialogDescription>
+              Your essay is being analyzed by artificial intelligence to provide detailed feedback and scoring.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {aiScoreMutation.isPending && !aiScoreResult && (
+            <div className="py-8 flex flex-col items-center justify-center">
+              <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
+              <p className="text-center text-neutral-text">
+                Analyzing your writing...
+              </p>
+              <Progress value={50} className="w-full max-w-md mt-4" />
+              <p className="text-sm text-neutral-muted mt-2">
+                This may take up to 30 seconds
+              </p>
+            </div>
+          )}
+          
+          {aiScoreResult && (
+            <div className="py-4">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center">
+                  <BadgeCheck className="h-6 w-6 text-primary mr-2" />
+                  <h3 className="text-lg font-semibold">Overall Band Score</h3>
+                </div>
+                <div className="bg-primary/10 rounded-full w-16 h-16 flex items-center justify-center">
+                  <span className="text-2xl font-bold text-primary">
+                    {aiScoreResult.overallScore}
+                  </span>
+                </div>
+              </div>
+              
+              <div className="mb-6">
+                <h4 className="text-sm font-medium mb-2">Scoring Breakdown</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {Object.entries(aiScoreResult.criteriaScores || {}).map(([criteria, score]) => (
+                    <div key={criteria} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                      <span className="text-sm">{criteria}</span>
+                      <div className="flex items-center">
+                        <Star className="h-4 w-4 text-amber-500 mr-1" />
+                        <span className="font-medium">{score}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              
+              <div>
+                <h4 className="text-sm font-medium mb-2 flex items-center">
+                  <Info className="h-4 w-4 mr-1 text-neutral-dark" />
+                  Detailed Feedback
+                </h4>
+                <div className="p-4 bg-muted/30 rounded-lg text-sm">
+                  <p className="whitespace-pre-line">{aiScoreResult.feedback}</p>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="secondary">Close</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
