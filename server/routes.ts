@@ -7,6 +7,7 @@ import helmet from "helmet";
 import { z } from "zod";
 import { sendEmail, generateOTP, emailTemplates } from "./utils/email";
 import { scoreWritingResponse, scoreSpeakingResponse, transcribeSpeakingAudio } from "./utils/openai";
+import { translateToArabic, translateToEnglish, translateTranscription } from "./utils/translate";
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -1525,6 +1526,108 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error scoring speaking response:", error);
       res.status(500).json({ 
         error: error instanceof Error ? error.message : "Failed to score speaking response"
+      });
+    }
+  });
+  
+  /**
+   * Text Translation Endpoint
+   * 
+   * @route POST /api/translate/to-arabic
+   * @description Translates text from English to Arabic using OpenAI's GPT-4o model
+   * @access Authenticated users only
+   * 
+   * Request body:
+   * - text: string - The English text to translate
+   * 
+   * Response:
+   * - 200: JSON containing { translation: string }
+   * - 400: Bad request if text is missing or empty
+   * - 500: Translation failed with error details
+   */
+  app.post("/api/translate/to-arabic", isAuthenticated, async (req, res) => {
+    try {
+      const schema = z.object({
+        text: z.string().min(1, "Text is required")
+      });
+      
+      const { text } = schema.parse(req.body);
+      
+      const translation = await translateToArabic(text);
+      
+      res.json({ translation });
+    } catch (error) {
+      console.error("Translation error:", error);
+      res.status(error instanceof z.ZodError ? 400 : 500).json({ 
+        error: error instanceof Error ? error.message : "Failed to translate text" 
+      });
+    }
+  });
+  
+  /**
+   * Text Translation Endpoint
+   * 
+   * @route POST /api/translate/to-english
+   * @description Translates text from Arabic to English using OpenAI's GPT-4o model
+   * @access Authenticated users only
+   * 
+   * Request body:
+   * - text: string - The Arabic text to translate
+   * 
+   * Response:
+   * - 200: JSON containing { translation: string }
+   * - 400: Bad request if text is missing or empty
+   * - 500: Translation failed with error details
+   */
+  app.post("/api/translate/to-english", isAuthenticated, async (req, res) => {
+    try {
+      const schema = z.object({
+        text: z.string().min(1, "Text is required")
+      });
+      
+      const { text } = schema.parse(req.body);
+      
+      const translation = await translateToEnglish(text);
+      
+      res.json({ translation });
+    } catch (error) {
+      console.error("Translation error:", error);
+      res.status(error instanceof z.ZodError ? 400 : 500).json({ 
+        error: error instanceof Error ? error.message : "Failed to translate text" 
+      });
+    }
+  });
+  
+  /**
+   * Audio Transcription + Translation Endpoint
+   * 
+   * @route POST /api/translate/transcription
+   * @description Transcribes audio and translates the result to Arabic
+   * @access Authenticated users only
+   * 
+   * Request body:
+   * - transcription: string - The English transcription text to translate
+   * 
+   * Response:
+   * - 200: JSON containing { translation: string }
+   * - 400: Bad request if transcription is missing or empty
+   * - 500: Translation failed with error details
+   */
+  app.post("/api/translate/transcription", isAuthenticated, async (req, res) => {
+    try {
+      const schema = z.object({
+        transcription: z.string().min(1, "Transcription is required")
+      });
+      
+      const { transcription } = schema.parse(req.body);
+      
+      const translation = await translateTranscription(transcription);
+      
+      res.json({ translation });
+    } catch (error) {
+      console.error("Transcription translation error:", error);
+      res.status(error instanceof z.ZodError ? 400 : 500).json({ 
+        error: error instanceof Error ? error.message : "Failed to translate transcription" 
       });
     }
   });
