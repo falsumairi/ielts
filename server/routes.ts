@@ -1424,7 +1424,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Audio upload configuration for both transcription and scoring
+  /**
+   * Audio Upload Configuration
+   * 
+   * This configuration handles audio file uploads for both transcription and scoring endpoints.
+   * It uses memory storage to avoid writing files to disk and implements validation for:
+   * - File size: Maximum 10MB to prevent system overload
+   * - File format: Accepts MP3, WAV, and WebM formats from various recording sources
+   */
   const audioUpload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
@@ -1439,14 +1446,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // Route for transcribing audio
+  /**
+   * Audio Transcription Endpoint
+   * 
+   * @route POST /api/transcribe
+   * @description Transcribes uploaded audio files to text using OpenAI's Whisper model
+   * @access Authenticated users only
+   * 
+   * Request body:
+   * - audio (file): The audio recording to transcribe (accepted formats: MP3, WAV, WebM)
+   * 
+   * Response:
+   * - 200: JSON containing the transcribed text { transcription: string }
+   * - 400: No audio file uploaded
+   * - 500: Transcription failed with error details
+   */
   app.post("/api/transcribe", isAuthenticated, audioUpload.single('audio'), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).send("No audio file uploaded");
       }
       
-      // Transcribe the audio
+      // Transcribe the audio using OpenAI's Whisper model via the utility function
       const transcription = await transcribeSpeakingAudio(req.file.buffer);
       
       res.json({ transcription });
@@ -1458,8 +1479,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  /**
+   * Speaking Response Scoring Endpoint
+   * 
+   * @route POST /api/speaking/score
+   * @description Scores transcribed speaking responses using OpenAI's GPT-4o model
+   * @access Authenticated users only
+   * 
+   * Request body:
+   * - questionId: number - The ID of the speaking question
+   * - transcription: string - The text transcription of the audio response
+   * - prompt: string - The original speaking prompt/question
+   * 
+   * Response:
+   * - 200: JSON containing:
+   *   - success: boolean
+   *   - overallScore: number (0-9 with 0.5 increments)
+   *   - criteriaScores: object containing scores for each IELTS criterion
+   *   - feedback: detailed feedback with strengths and areas for improvement
+   * - 400: Invalid request body
+   * - 500: Scoring failed with error details
+   */
   app.post("/api/speaking/score", isAuthenticated, async (req, res) => {
     try {
+      // Validate request body
       const scoreSchema = z.object({
         questionId: z.number(),
         transcription: z.string(),
@@ -1468,9 +1511,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const data = scoreSchema.parse(req.body);
       
-      // Score the transcribed response
+      // Score the transcribed response using the OpenAI GPT-4o model
       const result = await scoreSpeakingResponse(data.prompt, data.transcription);
 
+      // Return detailed scoring results
       res.json({
         success: true,
         overallScore: result.overallScore,
