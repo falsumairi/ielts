@@ -8,6 +8,7 @@ import { z } from "zod";
 import { sendEmail, generateOTP, emailTemplates } from "./utils/email";
 import { scoreWritingResponse, scoreSpeakingResponse, transcribeSpeakingAudio } from "./utils/openai";
 import { translateToArabic, translateToEnglish, translateTranscription } from "./utils/translate";
+import { analyzeVocabulary } from "./utils/vocabulary";
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -1628,6 +1629,385 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Transcription translation error:", error);
       res.status(error instanceof z.ZodError ? 400 : 500).json({ 
         error: error instanceof Error ? error.message : "Failed to translate transcription" 
+      });
+    }
+  });
+
+  /**
+   * Vocabulary Endpoints
+   */
+   
+  /**
+   * Analyze Word with OpenAI
+   * 
+   * @route POST /api/vocabulary/analyze
+   * @description Analyzes a word using OpenAI to get CEFR level, meaning, word family, example, and Arabic meaning
+   * @access Authenticated users only
+   * 
+   * Request body:
+   * - word: string - The word to analyze
+   * 
+   * Response:
+   * - 200: JSON with analysis results
+   * - 400: Invalid request
+   * - 401: User not authenticated
+   * - 500: Analysis failed with error details
+   */
+  app.post("/api/vocabulary/analyze", isAuthenticated, async (req, res) => {
+    try {
+      const schema = z.object({
+        word: z.string().min(1, "Word is required"),
+      });
+
+      const { word } = schema.parse(req.body);
+      
+      const analysis = await analyzeVocabulary(word);
+      
+      res.json(analysis);
+    } catch (error) {
+      console.error("Error analyzing vocabulary:", error);
+      res.status(error instanceof z.ZodError ? 400 : 500).json({ 
+        error: error instanceof Error ? error.message : "Failed to analyze vocabulary" 
+      });
+    }
+  });
+
+  /**
+   * Get User's Vocabulary Items
+   * 
+   * @route GET /api/vocabulary
+   * @description Retrieves all vocabulary items for the authenticated user
+   * @access Authenticated users only
+   * 
+   * Response:
+   * - 200: Array of vocabulary items
+   * - 401: User not authenticated
+   * - 500: Server error with details
+   */
+  app.get("/api/vocabulary", isAuthenticated, async (req, res) => {
+    try {
+      const vocabularies = await storage.getVocabulariesByUser(req.user.id);
+      res.json(vocabularies);
+    } catch (error) {
+      console.error("Error fetching vocabulary:", error);
+      res.status(500).json({ error: "Failed to fetch vocabulary items" });
+    }
+  });
+
+  /**
+   * Get Review Vocabulary Items
+   * 
+   * @route GET /api/vocabulary/review
+   * @description Retrieves vocabulary items due for review using PACE repetition
+   * @access Authenticated users only
+   * 
+   * Query parameters:
+   * - limit: number (optional) - Maximum number of items to retrieve
+   * 
+   * Response:
+   * - 200: Array of vocabulary items due for review
+   * - 401: User not authenticated
+   * - 500: Server error with details
+   */
+  app.get("/api/vocabulary/review", isAuthenticated, async (req, res) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
+      const reviewItems = await storage.getVocabularyForReview(req.user.id, limit);
+      res.json(reviewItems);
+    } catch (error) {
+      console.error("Error fetching vocabulary for review:", error);
+      res.status(500).json({ error: "Failed to fetch vocabulary review items" });
+    }
+  });
+
+  /**
+   * Get Vocabulary Item
+   * 
+   * @route GET /api/vocabulary/:id
+   * @description Retrieves a specific vocabulary item
+   * @access Authenticated users only
+   * 
+   * Parameters:
+   * - id: number - The ID of the vocabulary item
+   * 
+   * Response:
+   * - 200: Vocabulary item details
+   * - 401: User not authenticated
+   * - 403: User not authorized to access this vocabulary item
+   * - 404: Vocabulary item not found
+   * - 500: Server error with details
+   */
+  app.get("/api/vocabulary/:id", isAuthenticated, async (req, res) => {
+    try {
+      const vocabularyId = parseInt(req.params.id);
+      if (isNaN(vocabularyId)) {
+        return res.status(400).json({ error: "Invalid vocabulary ID" });
+      }
+
+      const vocabulary = await storage.getVocabulary(vocabularyId);
+      if (!vocabulary) {
+        return res.status(404).json({ error: "Vocabulary item not found" });
+      }
+
+      // Check if the user is authorized to access this vocabulary
+      if (vocabulary.userId !== req.user.id && req.user.role !== UserRole.ADMIN) {
+        return res.status(403).json({ error: "Not authorized to access this vocabulary item" });
+      }
+
+      res.json(vocabulary);
+    } catch (error) {
+      console.error("Error fetching vocabulary item:", error);
+      res.status(500).json({ error: "Failed to fetch vocabulary item" });
+    }
+  });
+
+  /**
+   * Add Vocabulary Item
+   * 
+   * @route POST /api/vocabulary
+   * @description Adds a new vocabulary item
+   * @access Authenticated users only
+   * 
+   * Request body:
+   * - word: string - The word to add
+   * - cefrLevel: string - CEFR level (A1, A2, B1, B2, C1, C2)
+   * - wordFamily: string (optional) - Related words
+   * - meaning: string - English definition
+   * - example: string - Example sentence
+   * - arabicMeaning: string (optional) - Arabic translation
+   * 
+   * Response:
+   * - 201: Created vocabulary item
+   * - 400: Invalid request body
+   * - 401: User not authenticated
+   * - 500: Server error with details
+   */
+  app.post("/api/vocabulary", isAuthenticated, async (req, res) => {
+    try {
+      const schema = z.object({
+        word: z.string().min(1, "Word is required"),
+        cefrLevel: z.enum(["A1", "A2", "B1", "B2", "C1", "C2"]),
+        wordFamily: z.string().optional(),
+        meaning: z.string().min(1, "Meaning is required"),
+        example: z.string().min(1, "Example is required"),
+        arabicMeaning: z.string().optional(),
+      });
+
+      const validatedData = schema.parse(req.body);
+
+      const vocabulary = await storage.createVocabulary({
+        userId: req.user.id,
+        word: validatedData.word,
+        cefrLevel: validatedData.cefrLevel,
+        wordFamily: validatedData.wordFamily || null,
+        meaning: validatedData.meaning,
+        example: validatedData.example,
+        arabicMeaning: validatedData.arabicMeaning || null,
+        reviewStage: 0
+      });
+
+      res.status(201).json(vocabulary);
+    } catch (error) {
+      console.error("Error creating vocabulary item:", error);
+      res.status(error instanceof z.ZodError ? 400 : 500).json({ 
+        error: error instanceof Error ? error.message : "Failed to create vocabulary item" 
+      });
+    }
+  });
+
+  /**
+   * Update Review Stage (PACE method)
+   * 
+   * @route PATCH /api/vocabulary/:id/review
+   * @description Updates the review stage of a vocabulary item based on user feedback
+   * @access Authenticated users only
+   * 
+   * Parameters:
+   * - id: number - The ID of the vocabulary item
+   * 
+   * Request body:
+   * - knowledgeRating: number - User self-assessment of knowledge (1-5)
+   *   1 = Don't know
+   *   2 = Barely recognize
+   *   3 = Can recognize but not use
+   *   4 = Can use with effort
+   *   5 = Know well
+   * 
+   * Response:
+   * - 200: Updated vocabulary item
+   * - 400: Invalid request body
+   * - 401: User not authenticated
+   * - 403: User not authorized to update this vocabulary item
+   * - 404: Vocabulary item not found
+   * - 500: Server error with details
+   */
+  app.patch("/api/vocabulary/:id/review", isAuthenticated, async (req, res) => {
+    try {
+      const vocabularyId = parseInt(req.params.id);
+      if (isNaN(vocabularyId)) {
+        return res.status(400).json({ error: "Invalid vocabulary ID" });
+      }
+
+      const schema = z.object({
+        knowledgeRating: z.number().min(1).max(5)
+      });
+
+      const { knowledgeRating } = schema.parse(req.body);
+
+      // Get the vocabulary item
+      const vocabulary = await storage.getVocabulary(vocabularyId);
+      if (!vocabulary) {
+        return res.status(404).json({ error: "Vocabulary item not found" });
+      }
+
+      // Check if the user is authorized to update this vocabulary
+      if (vocabulary.userId !== req.user.id && req.user.role !== UserRole.ADMIN) {
+        return res.status(403).json({ error: "Not authorized to update this vocabulary item" });
+      }
+
+      // Calculate new review stage based on knowledge rating and current stage
+      let newStage = vocabulary.reviewStage;
+      
+      if (knowledgeRating >= 4) {
+        // Knowledge is good, move to next stage
+        newStage = Math.min(newStage + 1, 5);
+      } else if (knowledgeRating <= 2) {
+        // Knowledge is poor, move back to stage 0
+        newStage = 0;
+      }
+      // If rating is 3, keep the same stage
+
+      // Update the vocabulary item
+      const updatedVocabulary = await storage.updateVocabularyReviewStatus(vocabularyId, newStage);
+      res.json(updatedVocabulary);
+    } catch (error) {
+      console.error("Error updating vocabulary review status:", error);
+      res.status(error instanceof z.ZodError ? 400 : 500).json({ 
+        error: error instanceof Error ? error.message : "Failed to update vocabulary review status" 
+      });
+    }
+  });
+
+  /**
+   * Update Vocabulary Item
+   * 
+   * @route PUT /api/vocabulary/:id
+   * @description Updates an existing vocabulary item
+   * @access Authenticated users only
+   * 
+   * Parameters:
+   * - id: number - The ID of the vocabulary item
+   * 
+   * Request body:
+   * - word: string - The word to update
+   * - cefrLevel: string - CEFR level (A1, A2, B1, B2, C1, C2)
+   * - wordFamily: string (optional) - Related words
+   * - meaning: string - English definition
+   * - example: string - Example sentence
+   * - arabicMeaning: string (optional) - Arabic translation
+   * 
+   * Response:
+   * - 200: Updated vocabulary item
+   * - 400: Invalid request body
+   * - 401: User not authenticated
+   * - 403: User not authorized to update this vocabulary item
+   * - 404: Vocabulary item not found
+   * - 500: Server error with details
+   */
+  app.put("/api/vocabulary/:id", isAuthenticated, async (req, res) => {
+    try {
+      const vocabularyId = parseInt(req.params.id);
+      if (isNaN(vocabularyId)) {
+        return res.status(400).json({ error: "Invalid vocabulary ID" });
+      }
+
+      const schema = z.object({
+        word: z.string().min(1, "Word is required"),
+        cefrLevel: z.enum(["A1", "A2", "B1", "B2", "C1", "C2"]),
+        wordFamily: z.string().optional(),
+        meaning: z.string().min(1, "Meaning is required"),
+        example: z.string().min(1, "Example is required"),
+        arabicMeaning: z.string().optional(),
+      });
+
+      const validatedData = schema.parse(req.body);
+
+      // Get the vocabulary item
+      const vocabulary = await storage.getVocabulary(vocabularyId);
+      if (!vocabulary) {
+        return res.status(404).json({ error: "Vocabulary item not found" });
+      }
+
+      // Check if the user is authorized to update this vocabulary
+      if (vocabulary.userId !== req.user.id && req.user.role !== UserRole.ADMIN) {
+        return res.status(403).json({ error: "Not authorized to update this vocabulary item" });
+      }
+
+      // Update the vocabulary item
+      const updatedVocabulary = await storage.updateVocabulary(vocabularyId, {
+        word: validatedData.word,
+        cefrLevel: validatedData.cefrLevel,
+        wordFamily: validatedData.wordFamily || vocabulary.wordFamily,
+        meaning: validatedData.meaning,
+        example: validatedData.example,
+        arabicMeaning: validatedData.arabicMeaning || vocabulary.arabicMeaning,
+      });
+
+      res.json(updatedVocabulary);
+    } catch (error) {
+      console.error("Error updating vocabulary item:", error);
+      res.status(error instanceof z.ZodError ? 400 : 500).json({ 
+        error: error instanceof Error ? error.message : "Failed to update vocabulary item" 
+      });
+    }
+  });
+
+  /**
+   * Delete Vocabulary Item
+   * 
+   * @route DELETE /api/vocabulary/:id
+   * @description Deletes a vocabulary item
+   * @access Authenticated users only
+   * 
+   * Parameters:
+   * - id: number - The ID of the vocabulary item
+   * 
+   * Response:
+   * - 200: Success message
+   * - 401: User not authenticated
+   * - 403: User not authorized to delete this vocabulary item
+   * - 404: Vocabulary item not found
+   * - 500: Server error with details
+   */
+  app.delete("/api/vocabulary/:id", isAuthenticated, async (req, res) => {
+    try {
+      const vocabularyId = parseInt(req.params.id);
+      if (isNaN(vocabularyId)) {
+        return res.status(400).json({ error: "Invalid vocabulary ID" });
+      }
+
+      // Get the vocabulary item
+      const vocabulary = await storage.getVocabulary(vocabularyId);
+      if (!vocabulary) {
+        return res.status(404).json({ error: "Vocabulary item not found" });
+      }
+
+      // Check if the user is authorized to delete this vocabulary
+      if (vocabulary.userId !== req.user.id && req.user.role !== UserRole.ADMIN) {
+        return res.status(403).json({ error: "Not authorized to delete this vocabulary item" });
+      }
+
+      // Delete the vocabulary item
+      const success = await storage.deleteVocabulary(vocabularyId);
+      if (success) {
+        res.json({ message: "Vocabulary item deleted successfully" });
+      } else {
+        res.status(500).json({ error: "Failed to delete vocabulary item" });
+      }
+    } catch (error) {
+      console.error("Error deleting vocabulary item:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to delete vocabulary item" 
       });
     }
   });
