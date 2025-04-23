@@ -2,9 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation, useRoute } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Test, TestModule } from "@shared/schema";
-import Header from "@/components/layout/Header";
-import Sidebar from "@/components/layout/Sidebar";
-import MobileNav from "@/components/layout/MobileNav";
+import Layout from "@/components/layout/Layout";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -88,12 +86,8 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-neutral-bg">
-      <Header toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
-      
-      <div className="flex flex-1">
-        <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
-        
+    <Layout>
+      <div className="bg-background">
         <main className="flex-1 p-4 md:p-6 pb-20 md:pb-6 overflow-y-auto">
           <div className="max-w-6xl mx-auto">
             <h1 className="text-2xl font-bold mb-6">Welcome, {user?.username}!</h1>
@@ -160,8 +154,6 @@ export default function Dashboard() {
           </div>
         </main>
       </div>
-      
-      <MobileNav />
-    </div>
+    </Layout>
   );
 }
