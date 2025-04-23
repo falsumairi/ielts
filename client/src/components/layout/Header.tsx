@@ -4,6 +4,7 @@ import { ThemeToggle } from "@/components/ThemeProvider";
 import { GraduationCap, Menu, X } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
+import NotificationBell from "@/components/NotificationBell";
 import {
   DropdownMenu,
   DropdownMenuContent,

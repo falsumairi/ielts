@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth } from "./auth";
-import { TestModule, UserRole, QuestionType } from "@shared/schema";
+import { TestModule, UserRole, QuestionType, NotificationType, NotificationPriority } from "@shared/schema";
 import helmet from "helmet";
 import { z } from "zod";
 import { sendEmail, generateOTP, emailTemplates } from "./utils/email";
@@ -2008,6 +2008,263 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error deleting vocabulary item:", error);
       res.status(500).json({ 
         error: error instanceof Error ? error.message : "Failed to delete vocabulary item" 
+      });
+    }
+  });
+
+  /**
+   * Notification Endpoints
+   */
+  
+  /**
+   * Get Notifications for Current User
+   * 
+   * @route GET /api/notifications
+   * @description Retrieves all notifications for the authenticated user
+   * @access Authenticated users only
+   * 
+   * Query parameters:
+   * - unreadOnly: boolean - If true, returns only unread notifications
+   * 
+   * Response:
+   * - 200: Array of Notification objects
+   * - 401: User not authenticated
+   */
+  app.get("/api/notifications", isAuthenticated, async (req, res) => {
+    try {
+      const unreadOnly = req.query.unreadOnly === 'true';
+      const notifications = await storage.getNotificationsByUser(req.user.id, unreadOnly);
+      res.json(notifications);
+    } catch (error) {
+      console.error("Error fetching notifications:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to fetch notifications" 
+      });
+    }
+  });
+  
+  /**
+   * Get Unread Notification Count
+   * 
+   * @route GET /api/notifications/count
+   * @description Gets the count of unread notifications for the authenticated user
+   * @access Authenticated users only
+   * 
+   * Response:
+   * - 200: { count: number }
+   * - 401: User not authenticated
+   */
+  app.get("/api/notifications/count", isAuthenticated, async (req, res) => {
+    try {
+      const count = await storage.getUnreadNotificationsCount(req.user.id);
+      res.json({ count });
+    } catch (error) {
+      console.error("Error counting notifications:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to count notifications" 
+      });
+    }
+  });
+  
+  /**
+   * Mark Notification as Read
+   * 
+   * @route PATCH /api/notifications/:id/read
+   * @description Marks a specific notification as read
+   * @access Authenticated users only
+   * 
+   * Parameters:
+   * - id: number - The ID of the notification
+   * 
+   * Response:
+   * - 200: Updated Notification object
+   * - 401: User not authenticated
+   * - 403: User not authorized to update this notification
+   * - 404: Notification not found
+   */
+  app.patch("/api/notifications/:id/read", isAuthenticated, async (req, res) => {
+    try {
+      const notificationId = parseInt(req.params.id);
+      if (isNaN(notificationId)) {
+        return res.status(400).json({ error: "Invalid notification ID" });
+      }
+      
+      // Check if notification exists and belongs to the user
+      const notification = await storage.getNotification(notificationId);
+      if (!notification) {
+        return res.status(404).json({ error: "Notification not found" });
+      }
+      
+      if (notification.userId !== req.user.id && req.user.role !== UserRole.ADMIN) {
+        return res.status(403).json({ error: "Not authorized to update this notification" });
+      }
+      
+      const updatedNotification = await storage.markNotificationAsRead(notificationId);
+      res.json(updatedNotification);
+    } catch (error) {
+      console.error("Error marking notification as read:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to update notification" 
+      });
+    }
+  });
+  
+  /**
+   * Mark All Notifications as Read
+   * 
+   * @route POST /api/notifications/read-all
+   * @description Marks all notifications for the authenticated user as read
+   * @access Authenticated users only
+   * 
+   * Response:
+   * - 200: Success message
+   * - 401: User not authenticated
+   * - 500: Server error with details
+   */
+  app.post("/api/notifications/read-all", isAuthenticated, async (req, res) => {
+    try {
+      const success = await storage.markAllNotificationsAsRead(req.user.id);
+      
+      if (success) {
+        res.json({ message: "All notifications marked as read" });
+      } else {
+        res.status(500).json({ error: "Some notifications could not be updated" });
+      }
+    } catch (error) {
+      console.error("Error marking all notifications as read:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to update notifications" 
+      });
+    }
+  });
+  
+  /**
+   * Delete Notification
+   * 
+   * @route DELETE /api/notifications/:id
+   * @description Deletes a notification
+   * @access Authenticated users only
+   * 
+   * Parameters:
+   * - id: number - The ID of the notification
+   * 
+   * Response:
+   * - 200: Success message
+   * - 401: User not authenticated
+   * - 403: User not authorized to delete this notification
+   * - 404: Notification not found
+   */
+  app.delete("/api/notifications/:id", isAuthenticated, async (req, res) => {
+    try {
+      const notificationId = parseInt(req.params.id);
+      if (isNaN(notificationId)) {
+        return res.status(400).json({ error: "Invalid notification ID" });
+      }
+      
+      // Check if notification exists and belongs to the user
+      const notification = await storage.getNotification(notificationId);
+      if (!notification) {
+        return res.status(404).json({ error: "Notification not found" });
+      }
+      
+      if (notification.userId !== req.user.id && req.user.role !== UserRole.ADMIN) {
+        return res.status(403).json({ error: "Not authorized to delete this notification" });
+      }
+      
+      const success = await storage.deleteNotification(notificationId);
+      
+      if (success) {
+        res.json({ message: "Notification deleted successfully" });
+      } else {
+        res.status(500).json({ error: "Failed to delete notification" });
+      }
+    } catch (error) {
+      console.error("Error deleting notification:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to delete notification" 
+      });
+    }
+  });
+  
+  /**
+   * Create Notification (Admin Only)
+   * 
+   * @route POST /api/notifications
+   * @description Creates a new notification for a user or multiple users
+   * @access Admin users only
+   * 
+   * Request body:
+   * - userIds: number[] - Array of user IDs to create notifications for
+   * - type: string - One of NotificationType enum values
+   * - title: string - Title of the notification
+   * - message: string - Content of the notification
+   * - priority: string - One of NotificationPriority enum values
+   * - actionLink: string? - Optional link for taking action
+   * - scheduledFor: Date? - Optional date to schedule the notification
+   * 
+   * Response:
+   * - 201: Success message with count of created notifications
+   * - 401: User not authenticated
+   * - 403: User not an admin
+   * - 400: Invalid request data
+   */
+  app.post("/api/notifications", isAdmin, async (req, res) => {
+    try {
+      const schema = z.object({
+        userIds: z.array(z.number()).min(1, "At least one user ID is required"),
+        type: z.enum([
+          NotificationType.VOCABULARY_REVIEW, 
+          NotificationType.TEST_REMINDER,
+          NotificationType.ACHIEVEMENT,
+          NotificationType.SYSTEM
+        ]),
+        title: z.string().min(1, "Title is required"),
+        message: z.string().min(1, "Message is required"),
+        priority: z.enum([
+          NotificationPriority.LOW,
+          NotificationPriority.MEDIUM,
+          NotificationPriority.HIGH
+        ]).default(NotificationPriority.MEDIUM),
+        actionLink: z.string().optional(),
+        scheduledFor: z.date().optional()
+      });
+      
+      const validatedData = schema.parse(req.body);
+      
+      // Create notifications for each user
+      const createdCount = {
+        success: 0,
+        failed: 0
+      };
+      
+      for (const userId of validatedData.userIds) {
+        try {
+          await storage.createNotification({
+            userId,
+            type: validatedData.type,
+            title: validatedData.title,
+            message: validatedData.message,
+            priority: validatedData.priority,
+            actionLink: validatedData.actionLink,
+            scheduledFor: validatedData.scheduledFor,
+            isRead: false
+          });
+          createdCount.success++;
+        } catch (error) {
+          console.error(`Failed to create notification for user ${userId}:`, error);
+          createdCount.failed++;
+        }
+      }
+      
+      res.status(201).json({ 
+        message: "Notifications created",
+        created: createdCount.success,
+        failed: createdCount.failed
+      });
+    } catch (error) {
+      console.error("Error creating notifications:", error);
+      res.status(error instanceof z.ZodError ? 400 : 500).json({ 
+        error: error instanceof Error ? error.message : "Failed to create notifications" 
       });
     }
   });
