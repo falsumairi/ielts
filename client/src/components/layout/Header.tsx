@@ -93,6 +93,9 @@ export default function Header({ showAuthButtons = true }: HeaderProps) {
           {/* Theme toggle button */}
           <ThemeToggle />
           
+          {/* Notification Bell - only show for authenticated users */}
+          {user && <NotificationBell />}
+          
           {/* Auth buttons for non-authenticated users */}
           {!user && showAuthButtons && (
             <div className="hidden md:flex items-center space-x-2">
