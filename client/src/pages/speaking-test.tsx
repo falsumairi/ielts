@@ -30,6 +30,7 @@ import {
   DialogFooter,
   DialogClose
 } from "@/components/ui/dialog";
+import TranslationToggle from "@/components/TranslationToggle";
 
 export default function SpeakingTest() {
   const { id } = useParams<{ id: string }>();
@@ -50,6 +51,9 @@ export default function SpeakingTest() {
   const [responseTimeLeft, setResponseTimeLeft] = useState<number | null>(null);
   const [testEnded, setTestEnded] = useState(false);
 
+  // Translation state
+  const [translatedPrompt, setTranslatedPrompt] = useState<string | null>(null);
+  
   // AI Scoring state
   const [showAIScoreDialog, setShowAIScoreDialog] = useState(false);
   const [scoringQuestionId, setScoringQuestionId] = useState<number | null>(null);
@@ -362,9 +366,18 @@ export default function SpeakingTest() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Task Card */}
           <div className="bg-white rounded-lg shadow-sm p-6">
-            <h2 className="font-bold text-lg mb-4">Task Card</h2>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="font-bold text-lg">Task Card</h2>
+              {currentQuestion && (
+                <TranslationToggle
+                  text={currentQuestion.content}
+                  onTranslated={setTranslatedPrompt}
+                  compact={true}
+                />
+              )}
+            </div>
             <div className="border border-amber-200 p-4 rounded-lg bg-amber-50">
-              <p className="font-medium mb-3">{currentQuestion?.content}</p>
+              <p className="font-medium mb-3">{translatedPrompt || currentQuestion?.content}</p>
               
               {currentPartIndex === 1 && (
                 <div className="mb-2">
