@@ -28,6 +28,7 @@ import {
   DialogClose
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
+import TranslationToggle from "@/components/TranslationToggle";
 
 export default function WritingTest() {
   const { id } = useParams<{ id: string }>();
@@ -45,6 +46,10 @@ export default function WritingTest() {
   const [wordCounts, setWordCounts] = useState<Record<number, number>>({});
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [testEnded, setTestEnded] = useState(false);
+  
+  // Translation state
+  const [translatedTask1, setTranslatedTask1] = useState<string | null>(null);
+  const [translatedTask2, setTranslatedTask2] = useState<string | null>(null);
   
   // AI Scoring state
   const [showAIScoreDialog, setShowAIScoreDialog] = useState(false);
@@ -316,12 +321,23 @@ export default function WritingTest() {
           {/* Task 1 */}
           <TabsContent value="1">
             <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-              <h2 className="font-bold text-lg mb-4">Task 1</h2>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="font-bold text-lg">Task 1</h2>
+                {task1Question && (
+                  <TranslationToggle
+                    text={task1Question.content}
+                    onTranslated={setTranslatedTask1}
+                    compact={true}
+                  />
+                )}
+              </div>
               <div className="mb-6">
                 <p className="mb-4">You should spend about 20 minutes on this task.</p>
                 <p className="font-medium mb-4">Write about the following topic:</p>
                 <div className="p-4 bg-neutral-bg rounded-lg mb-4">
-                  <p className="text-neutral-text">{task1Question?.content}</p>
+                  <p className="text-neutral-text">
+                    {translatedTask1 || task1Question?.content}
+                  </p>
                 </div>
                 <p className="mb-2">Write at least 150 words.</p>
               </div>
@@ -369,12 +385,23 @@ export default function WritingTest() {
           {/* Task 2 */}
           <TabsContent value="2">
             <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-              <h2 className="font-bold text-lg mb-4">Task 2</h2>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="font-bold text-lg">Task 2</h2>
+                {task2Question && (
+                  <TranslationToggle
+                    text={task2Question.content}
+                    onTranslated={setTranslatedTask2}
+                    compact={true}
+                  />
+                )}
+              </div>
               <div className="mb-6">
                 <p className="mb-4">You should spend about 40 minutes on this task.</p>
                 <p className="font-medium mb-4">Write about the following topic:</p>
                 <div className="p-4 bg-neutral-bg rounded-lg mb-4">
-                  <p className="text-neutral-text">{task2Question?.content}</p>
+                  <p className="text-neutral-text">
+                    {translatedTask2 || task2Question?.content}
+                  </p>
                 </div>
                 <p className="mb-2">Write at least 250 words.</p>
               </div>
