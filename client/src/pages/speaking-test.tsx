@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation, useParams } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Test, Question, QuestionType } from "@shared/schema";
@@ -10,7 +10,26 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { 
+  ChevronLeft, 
+  ChevronRight, 
+  Loader2, 
+  Brain, 
+  BadgeCheck, 
+  Star, 
+  Info,
+  Sparkles
+} from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogClose
+} from "@/components/ui/dialog";
 
 export default function SpeakingTest() {
   const { id } = useParams<{ id: string }>();
@@ -30,6 +49,13 @@ export default function SpeakingTest() {
   const [preparationTimeLeft, setPreparationTimeLeft] = useState<number | null>(null);
   const [responseTimeLeft, setResponseTimeLeft] = useState<number | null>(null);
   const [testEnded, setTestEnded] = useState(false);
+
+  // AI Scoring state
+  const [showAIScoreDialog, setShowAIScoreDialog] = useState(false);
+  const [scoringQuestionId, setScoringQuestionId] = useState<number | null>(null);
+  const [transcription, setTranscription] = useState<string>("");
+  const [aiScoreResult, setAiScoreResult] = useState<any>(null);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   
   // Fetch test details
   const { data: test, isLoading: isLoadingTest } = useQuery<Test>({
@@ -124,6 +150,98 @@ export default function SpeakingTest() {
     },
   });
   
+  // Transcribe audio mutation
+  const transcribeAudioMutation = useMutation({
+    mutationFn: async (audioUrl: string) => {
+      setIsTranscribing(true);
+      
+      // Convert audio URL to blob
+      const response = await fetch(audioUrl);
+      const audioBlob = await response.blob();
+      
+      // Create FormData and append the audio blob
+      const formData = new FormData();
+      formData.append('audio', audioBlob, 'recording.wav');
+      
+      // Send to backend for transcription
+      const res = await fetch('/api/transcribe', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (!res.ok) {
+        throw new Error('Failed to transcribe audio');
+      }
+      
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setTranscription(data.transcription);
+      setIsTranscribing(false);
+      
+      // After successful transcription, proceed to AI scoring if we have a valid question ID
+      if (scoringQuestionId !== null && currentQuestion) {
+        aiScoreMutation.mutate({
+          questionId: scoringQuestionId,
+          transcription: data.transcription,
+          prompt: currentQuestion.content
+        });
+      }
+    },
+    onError: (error) => {
+      setIsTranscribing(false);
+      toast({
+        title: "Transcription Error",
+        description: "Could not transcribe your audio. Please try again.",
+        variant: "destructive",
+      });
+    }
+  });
+  
+  // AI Score mutation
+  const aiScoreMutation = useMutation({
+    mutationFn: async ({ 
+      questionId, 
+      transcription, 
+      prompt 
+    }: { 
+      questionId: number; 
+      transcription: string; 
+      prompt: string; 
+    }) => {
+      const res = await apiRequest("POST", "/api/speaking/score", {
+        questionId,
+        transcription,
+        prompt
+      });
+      
+      if (!res.ok) {
+        throw new Error("Failed to generate AI score");
+      }
+      
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setAiScoreResult(data);
+      
+      // Update the answer with AI feedback
+      if (scoringQuestionId && data) {
+        apiRequest("PATCH", `/api/attempts/${attemptId}/answers/${scoringQuestionId}`, {
+          score: data.overallScore,
+          feedback: data.feedback,
+          isCorrect: true
+        });
+      }
+    },
+    onError: (error) => {
+      toast({
+        title: "AI Scoring Error",
+        description: "Could not generate AI score. Please try again.",
+        variant: "destructive",
+      });
+    }
+  });
+  
   // Handle preparation end
   const handlePreparationEnd = () => {
     setIsPreparing(false);
@@ -167,6 +285,29 @@ export default function SpeakingTest() {
   const handleEndTest = () => {
     setTestEnded(true);
     completeTestMutation.mutate();
+  };
+  
+  // Handle request for AI feedback
+  const handleRequestAIFeedback = (questionId: number) => {
+    // Reset state
+    setAiScoreResult(null);
+    setTranscription("");
+    setScoringQuestionId(questionId);
+    setShowAIScoreDialog(true);
+    
+    // Get the audio recording
+    const audio = recordedAudio[questionId];
+    if (audio && audio.url) {
+      // Start transcription
+      transcribeAudioMutation.mutate(audio.url);
+    } else {
+      toast({
+        title: "Error",
+        description: "No recording found for this task",
+        variant: "destructive",
+      });
+      setShowAIScoreDialog(false);
+    }
   };
   
   if (isLoadingTest || isLoadingQuestions) {
@@ -274,6 +415,19 @@ export default function SpeakingTest() {
               onRecordingComplete={handleRecordingComplete}
               maxDuration={getMaxDuration()}
             />
+            
+            {!isPreparing && recordedAudio[currentQuestion?.id || 0] && (
+              <div className="mt-4 flex justify-end">
+                <Button
+                  variant="outline"
+                  className="flex items-center"
+                  onClick={() => currentQuestion && handleRequestAIFeedback(currentQuestion.id)}
+                >
+                  <Brain className="h-4 w-4 mr-2" />
+                  Get AI Feedback
+                </Button>
+              </div>
+            )}
           </div>
         </div>
         
@@ -319,6 +473,96 @@ export default function SpeakingTest() {
           </Button>
         </div>
       </div>
+      
+      {/* AI Score Dialog */}
+      <Dialog open={showAIScoreDialog} onOpenChange={setShowAIScoreDialog}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <Brain className="h-5 w-5 mr-2 text-primary" />
+              AI Speaking Assessment
+            </DialogTitle>
+            <DialogDescription>
+              Your speaking response is being analyzed by artificial intelligence to provide detailed feedback and scoring.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {/* Processing State */}
+          {(isTranscribing || aiScoreMutation.isPending) && !aiScoreResult && (
+            <div className="py-8 flex flex-col items-center justify-center">
+              <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
+              <p className="text-center text-neutral-text">
+                {isTranscribing ? "Transcribing your speech..." : "Analyzing your speaking skills..."}
+              </p>
+              <Progress value={isTranscribing ? 30 : 70} className="w-full max-w-md mt-4" />
+              <p className="text-sm text-neutral-muted mt-2">
+                This may take up to 30 seconds
+              </p>
+            </div>
+          )}
+          
+          {/* Transcription Result */}
+          {transcription && !aiScoreResult && (
+            <div className="py-4">
+              <h3 className="text-sm font-medium mb-2 flex items-center">
+                <Sparkles className="h-4 w-4 mr-1 text-amber-500" />
+                Transcribed Speech
+              </h3>
+              <div className="p-4 bg-muted/30 rounded-lg text-sm mb-4">
+                <p className="italic">{transcription}</p>
+              </div>
+            </div>
+          )}
+          
+          {/* AI Score Result */}
+          {aiScoreResult && (
+            <div className="py-4">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center">
+                  <BadgeCheck className="h-6 w-6 text-primary mr-2" />
+                  <h3 className="text-lg font-semibold">Overall Band Score</h3>
+                </div>
+                <div className="bg-primary/10 rounded-full w-16 h-16 flex items-center justify-center">
+                  <span className="text-2xl font-bold text-primary">
+                    {aiScoreResult.overallScore}
+                  </span>
+                </div>
+              </div>
+              
+              <div className="mb-6">
+                <h4 className="text-sm font-medium mb-2">Scoring Breakdown</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {Object.entries(aiScoreResult.criteriaScores || {}).map(([criteria, score]) => (
+                    <div key={criteria} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                      <span className="text-sm">{criteria}</span>
+                      <div className="flex items-center">
+                        <Star className="h-4 w-4 text-amber-500 mr-1" />
+                        <span className="font-medium">{score}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              
+              <div>
+                <h4 className="text-sm font-medium mb-2 flex items-center">
+                  <Info className="h-4 w-4 mr-1 text-neutral-dark" />
+                  Detailed Feedback
+                </h4>
+                <div className="p-4 bg-muted/30 rounded-lg text-sm">
+                  <p className="whitespace-pre-line">{aiScoreResult.feedback}</p>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="secondary">Close</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
