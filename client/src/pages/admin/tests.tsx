@@ -57,10 +57,16 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { AlertCircle, CheckCircle2, ChevronDown, FileUp, ListFilter, PlusCircle, RefreshCw, Trash2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronDown, Download, FileUp, HelpCircle, ListFilter, PlusCircle, RefreshCw, Trash2 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface TestData {
   id: number;
@@ -681,21 +687,63 @@ export default function AdminTests() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Upload Questions</CardTitle>
+                  <CardTitle className="flex items-center gap-2">
+                    Upload Questions
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <HelpCircle size={16} className="text-muted-foreground" />
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-sm">
+                          <p>Upload questions in JSON, CSV, or XLSX format. Download a template below.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </CardTitle>
                   <CardDescription>
-                    Upload JSON file containing test questions
+                    Upload questions in JSON, CSV, or XLSX format
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="mb-4">
-                    <Label htmlFor="questionsFile">Questions (JSON)</Label>
+                    <Label htmlFor="questionsFile">Questions File</Label>
                     <Input 
                       id="questionsFile" 
                       type="file" 
-                      accept=".json"
+                      accept=".json,.csv,.xlsx,.xls"
                       onChange={(e) => setQuestionsFile(e.target.files ? e.target.files[0] : null)}
                       className="mt-2"
                     />
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Label className="text-xs text-muted-foreground w-full mb-1">Download template:</Label>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => window.open(`/api/admin/tests/template/questions/download?format=xlsx&module=${selectedTest?.module || 'reading'}`, '_blank')}
+                        className="flex items-center justify-center gap-1 text-xs"
+                      >
+                        <Download size={12} />
+                        XLSX
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => window.open(`/api/admin/tests/template/questions/download?format=csv&module=${selectedTest?.module || 'reading'}`, '_blank')}
+                        className="flex items-center justify-center gap-1 text-xs"
+                      >
+                        <Download size={12} />
+                        CSV
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => window.open(`/api/admin/tests/template/questions/download?format=json&module=${selectedTest?.module || 'reading'}`, '_blank')}
+                        className="flex items-center justify-center gap-1 text-xs"
+                      >
+                        <Download size={12} />
+                        JSON
+                      </Button>
+                    </div>
                   </div>
                   {uploadResults.questions && (
                     <Alert className="mb-4">

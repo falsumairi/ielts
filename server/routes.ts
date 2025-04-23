@@ -9,6 +9,8 @@ import { sendEmail, generateOTP, emailTemplates } from "./utils/email";
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import * as XLSX from 'xlsx';
+import csvParser from 'csv-parser';
 
 // Middleware to check if user is authenticated
 const isAuthenticated = (req: Request, res: Response, next: Function) => {
@@ -883,20 +885,106 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Bulk upload questions (from JSON file)
-  const uploadJSON = multer({ 
+  // Bulk upload questions (from JSON, CSV, or XLSX file)
+  const uploadQuestionFiles = multer({ 
     storage: multer.memoryStorage(),
-    limits: { fileSize: 2 * 1024 * 1024 }, // 2MB limit
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
     fileFilter: (req, file, cb) => {
-      if (file.mimetype === 'application/json') {
+      const allowedMimes = [
+        'application/json',
+        'text/csv',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      ];
+      if (allowedMimes.includes(file.mimetype)) {
         cb(null, true);
       } else {
-        cb(new Error('Invalid file type. Only JSON files are allowed.'), false);
+        cb(new Error('Invalid file type. Only JSON, CSV, and Excel files are allowed.'), false);
       }
     }
   });
+  
+  // Download question template
+  app.get('/api/admin/tests/template/questions/download', isAdmin, (req, res) => {
+    try {
+      const format = req.query.format as string || 'xlsx';
+      const testType = req.query.module as TestModule || TestModule.READING;
+      
+      // Create template data based on test type
+      const templateData = [
+        {
+          type: QuestionType.MULTIPLE_CHOICE,
+          content: 'Sample multiple choice question',
+          options: JSON.stringify(['Option A', 'Option B', 'Option C', 'Option D']),
+          correctAnswer: 'Option A',
+          passageIndex: testType === TestModule.READING ? 0 : null,
+          audioPath: testType === TestModule.LISTENING ? 'audio_file.mp3' : null,
+        },
+        {
+          type: QuestionType.TRUE_FALSE_NG,
+          content: 'Sample true/false/not given question',
+          options: JSON.stringify(['True', 'False', 'Not Given']),
+          correctAnswer: 'True',
+          passageIndex: testType === TestModule.READING ? 0 : null,
+          audioPath: testType === TestModule.LISTENING ? 'audio_file.mp3' : null,
+        },
+        {
+          type: QuestionType.SHORT_ANSWER,
+          content: 'Sample short answer question',
+          options: null,
+          correctAnswer: 'Sample answer',
+          passageIndex: testType === TestModule.READING ? 0 : null,
+          audioPath: testType === TestModule.LISTENING ? 'audio_file.mp3' : null,
+        }
+      ];
+      
+      if (format === 'json') {
+        // Return JSON template
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', `attachment; filename=questions_template_${testType}.json`);
+        return res.json(templateData);
+      } 
+      else if (format === 'csv') {
+        // Convert to CSV format
+        const csvContent = [
+          // Header row
+          Object.keys(templateData[0]).join(','),
+          // Data rows
+          ...templateData.map(row => 
+            Object.values(row).map(value => {
+              if (value === null) return '';
+              if (typeof value === 'string' && value.includes(',')) {
+                return `"${value}"`;
+              }
+              return value;
+            }).join(',')
+          )
+        ].join('\n');
+        
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename=questions_template_${testType}.csv`);
+        return res.send(csvContent);
+      } 
+      else {
+        // Default: Return XLSX template
+        const worksheet = XLSX.utils.json_to_sheet(templateData);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Questions Template');
+        
+        const excelBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+        
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename=questions_template_${testType}.xlsx`);
+        return res.send(Buffer.from(excelBuffer));
+      }
+    } catch (error) {
+      console.error('Error generating template:', error);
+      res.status(500).json({ error: 'Failed to generate template' });
+    }
+  });
 
-  app.post('/api/admin/tests/:id/questions/upload', isAdmin, uploadJSON.single('file'), async (req, res) => {
+  // Process uploaded questions from various file formats
+  app.post('/api/admin/tests/:id/questions/upload', isAdmin, uploadQuestionFiles.single('file'), async (req, res) => {
     const testId = parseInt(req.params.id);
     if (isNaN(testId)) {
       return res.status(400).json({ error: "Invalid test ID" });
@@ -912,25 +1000,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!test) {
         return res.status(404).json({ error: "Test not found" });
       }
-
-      // Parse JSON file
-      const questionsData = JSON.parse(req.file.buffer.toString());
       
-      if (!Array.isArray(questionsData)) {
-        return res.status(400).json({ error: 'Invalid format. Expected an array of questions.' });
+      let questionsData: any[] = [];
+      const fileType = path.extname(req.file.originalname).toLowerCase();
+      
+      // Parse file based on its type
+      if (fileType === '.json') {
+        // Parse JSON file
+        questionsData = JSON.parse(req.file.buffer.toString());
+        if (!Array.isArray(questionsData)) {
+          return res.status(400).json({ error: 'Invalid format. Expected an array of questions.' });
+        }
+      } 
+      else if (fileType === '.csv') {
+        // Parse CSV file
+        const results: any[] = [];
+        
+        // Create a temporary file to read the CSV data
+        const tempFilePath = path.join(__dirname, '../uploads/temp_' + Date.now() + '.csv');
+        fs.writeFileSync(tempFilePath, req.file.buffer);
+        
+        // Process the CSV file
+        await new Promise<void>((resolve, reject) => {
+          fs.createReadStream(tempFilePath)
+            .pipe(csvParser)
+            .on('data', (data: any) => results.push(data))
+            .on('end', () => {
+              questionsData = results;
+              // Delete temp file
+              fs.unlinkSync(tempFilePath);
+              resolve();
+            })
+            .on('error', (err) => {
+              fs.unlinkSync(tempFilePath);
+              reject(err);
+            });
+        });
+      } 
+      else if (fileType === '.xlsx' || fileType === '.xls') {
+        // Parse Excel file
+        const workbook = XLSX.read(req.file.buffer);
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        questionsData = XLSX.utils.sheet_to_json(worksheet);
+      } 
+      else {
+        return res.status(400).json({ error: 'Unsupported file format' });
       }
-
-      // Create questions
+      
+      // Process the parsed questions
       const createdQuestions = [];
       
       for (const questionData of questionsData) {
         try {
           // Add testId to each question
-          const newQuestion = await storage.createQuestion({
+          const processedQuestion = {
             ...questionData,
-            testId
-          });
+            testId,
+            // Convert options from string to JSON if needed
+            options: typeof questionData.options === 'string' ? 
+              questionData.options : 
+              JSON.stringify(questionData.options || null)
+          };
           
+          const newQuestion = await storage.createQuestion(processedQuestion);
           createdQuestions.push(newQuestion);
         } catch (error) {
           console.error('Error creating question:', error);
