@@ -76,7 +76,7 @@ export default function ForgotPassword() {
   // Request password reset email mutation
   const requestPasswordReset = useMutation({
     mutationFn: async (values: ForgotPasswordValues) => {
-      const response = await apiRequest("POST", "/api/forgot-password", values);
+      const response = await apiRequest("POST", "/api/password-reset/request", values);
       return response.json();
     },
     onSuccess: (data) => {
@@ -111,7 +111,13 @@ export default function ForgotPassword() {
   // Reset password with OTP mutation
   const resetPasswordWithOtp = useMutation({
     mutationFn: async (values: OtpVerificationValues & { email: string }) => {
-      const response = await apiRequest("POST", "/api/reset-password", values);
+      // Prepare data for the API
+      const data = {
+        email: values.email,
+        token: values.otp,
+        password: values.password
+      };
+      const response = await apiRequest("POST", "/api/password-reset/reset", data);
       return response.json();
     },
     onSuccess: () => {

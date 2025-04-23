@@ -6,6 +6,7 @@ import { compare, hash } from "bcrypt";
 import { storage } from "./storage";
 import { User as SelectUser } from "@shared/schema";
 import { z } from "zod";
+import { sendEmail, emailTemplates, generateOTP } from "./utils/email";
 
 declare global {
   namespace Express {
@@ -20,6 +21,10 @@ async function hashPassword(password: string) {
 async function comparePasswords(supplied: string, stored: string) {
   return await compare(supplied, stored);
 }
+
+// Store for password reset tokens
+// Format: { email: { token: string, expires: Date } }
+const resetTokens = new Map<string, { token: string, expires: Date }>();
 
 export function setupAuth(app: Express) {
   const sessionSettings: session.SessionOptions = {
@@ -133,5 +138,178 @@ export function setupAuth(app: Express) {
     // Remove password from response
     const userWithoutPassword = { ...req.user, password: undefined };
     res.json(userWithoutPassword);
+  });
+
+  /**
+   * Password Reset Request Endpoint
+   * 
+   * @route POST /api/password-reset/request
+   * @description Initiates a password reset by sending a reset token via email
+   * @access Public
+   * 
+   * Request body:
+   * - email: string - The email address of the user requesting password reset
+   * 
+   * Response:
+   * - 200: Password reset email sent successfully
+   * - 404: User with the provided email not found
+   * - 500: Failed to send reset email
+   */
+  app.post("/api/password-reset/request", async (req, res) => {
+    try {
+      // Validate request body
+      const schema = z.object({
+        email: z.string().email()
+      });
+      
+      const { email } = schema.parse(req.body);
+      
+      // Find user by email
+      const user = await storage.getUserByEmail(email);
+      if (!user) {
+        // For security reasons, don't reveal whether the email exists or not
+        return res.status(200).json({ message: "If the email exists, a password reset link has been sent" });
+      }
+      
+      // Generate 6-digit OTP
+      const token = generateOTP(6);
+      
+      // Set expiration time (60 seconds from now)
+      const expires = new Date();
+      expires.setSeconds(expires.getSeconds() + 60);
+      
+      // Store token and expiration
+      resetTokens.set(email, { token, expires });
+      
+      // Get email template
+      const template = emailTemplates.passwordReset(token);
+      
+      // Send password reset email
+      const emailSent = await sendEmail({
+        to: email,
+        from: 'noreply@ieltsexam.com',
+        subject: template.subject,
+        html: template.html,
+        text: template.text
+      });
+      
+      if (!emailSent) {
+        return res.status(500).json({ message: "Failed to send password reset email" });
+      }
+      
+      res.status(200).json({ message: "Password reset instructions sent to your email" });
+    } catch (error) {
+      console.error("Password reset request error:", error);
+      if (error.name === "ZodError") {
+        return res.status(400).json({ message: "Invalid email address" });
+      }
+      res.status(500).json({ message: "Failed to process password reset request" });
+    }
+  });
+
+  /**
+   * Verify Password Reset Token Endpoint
+   * 
+   * @route POST /api/password-reset/verify
+   * @description Verifies the password reset token before allowing password change
+   * @access Public
+   * 
+   * Request body:
+   * - email: string - The email address of the user
+   * - token: string - The OTP/token received via email
+   * 
+   * Response:
+   * - 200: Token verified successfully
+   * - 400: Invalid or expired token
+   */
+  app.post("/api/password-reset/verify", (req, res) => {
+    try {
+      // Validate request body
+      const schema = z.object({
+        email: z.string().email(),
+        token: z.string().length(6)
+      });
+      
+      const { email, token } = schema.parse(req.body);
+      
+      // Check if token exists and has not expired
+      const resetData = resetTokens.get(email);
+      if (!resetData || resetData.token !== token || new Date() > resetData.expires) {
+        return res.status(400).json({ message: "Invalid or expired token" });
+      }
+      
+      res.status(200).json({ message: "Token verified successfully" });
+    } catch (error) {
+      console.error("Token verification error:", error);
+      if (error.name === "ZodError") {
+        return res.status(400).json({ message: "Invalid request data" });
+      }
+      res.status(500).json({ message: "Failed to verify token" });
+    }
+  });
+
+  /**
+   * Reset Password Endpoint
+   * 
+   * @route POST /api/password-reset/reset
+   * @description Resets the user's password after token verification
+   * @access Public
+   * 
+   * Request body:
+   * - email: string - The email address of the user
+   * - token: string - The OTP/token received via email
+   * - password: string - The new password
+   * 
+   * Response:
+   * - 200: Password reset successful
+   * - 400: Invalid or expired token, or password requirements not met
+   * - 404: User not found
+   * - 500: Failed to reset password
+   */
+  app.post("/api/password-reset/reset", async (req, res) => {
+    try {
+      // Validate request body
+      const schema = z.object({
+        email: z.string().email(),
+        token: z.string().length(6),
+        password: z.string().min(8)
+      });
+      
+      const { email, token, password } = schema.parse(req.body);
+      
+      // Check if token exists and has not expired
+      const resetData = resetTokens.get(email);
+      if (!resetData || resetData.token !== token || new Date() > resetData.expires) {
+        return res.status(400).json({ message: "Invalid or expired token" });
+      }
+      
+      // Find user by email
+      const user = await storage.getUserByEmail(email);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      // Hash new password
+      const hashedPassword = await hashPassword(password);
+      
+      // Update user's password
+      const updatedUser = await storage.updateUserPassword(user.id, hashedPassword);
+      if (!updatedUser) {
+        return res.status(500).json({ message: "Failed to update password" });
+      }
+      
+      // Remove token from store
+      resetTokens.delete(email);
+      
+      res.status(200).json({ message: "Password reset successful. You can now log in with your new password." });
+    } catch (error) {
+      console.error("Password reset error:", error);
+      if (error.name === "ZodError") {
+        return res.status(400).json({ 
+          message: "Invalid request data. Password must be at least 8 characters long." 
+        });
+      }
+      res.status(500).json({ message: "Failed to reset password" });
+    }
   });
 }
