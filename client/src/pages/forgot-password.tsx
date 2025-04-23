@@ -25,6 +25,7 @@ import {
 import { Loader2, CheckCircle, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import Layout from "@/components/layout/Layout";
 
 // Form schema
 const forgotPasswordSchema = z.object({
@@ -181,193 +182,197 @@ export default function ForgotPassword() {
   // If the password reset was successful
   if (isSuccess) {
     return (
-      <div className="min-h-screen bg-neutral-bg flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-        <Card className="w-full max-w-md shadow-lg">
-          <CardHeader className="text-center">
-            <div className="flex-center mb-4">
-              <div className="h-12 w-12 rounded-full bg-success/20 flex-center text-success">
-                <CheckCircle className="h-6 w-6" />
+      <Layout showAuthButtons={false}>
+        <div className="min-h-[calc(100vh-4rem)] bg-background flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+          <Card className="w-full max-w-md shadow-lg border-border">
+            <CardHeader className="text-center">
+              <div className="flex justify-center mb-4">
+                <div className="h-12 w-12 rounded-full bg-success/20 flex items-center justify-center text-success">
+                  <CheckCircle className="h-6 w-6" />
+                </div>
               </div>
-            </div>
-            <CardTitle className="text-2xl font-bold">Password Reset Successful</CardTitle>
-            <CardDescription>Your password has been reset successfully.</CardDescription>
-          </CardHeader>
-          <CardFooter className="flex flex-col space-y-4">
-            <Button asChild className="w-full">
-              <Link href="/auth">
-                Return to Login
-              </Link>
-            </Button>
-          </CardFooter>
-        </Card>
-      </div>
+              <CardTitle className="text-2xl font-bold">Password Reset Successful</CardTitle>
+              <CardDescription>Your password has been reset successfully.</CardDescription>
+            </CardHeader>
+            <CardFooter className="flex flex-col space-y-4">
+              <Button asChild className="w-full">
+                <Link href="/auth">
+                  Return to Login
+                </Link>
+              </Button>
+            </CardFooter>
+          </Card>
+        </div>
+      </Layout>
     );
   }
   
   return (
-    <div className="min-h-screen bg-neutral-bg flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <Card className="w-full max-w-md shadow-lg">
-        <CardHeader>
-          <div className="flex items-center mb-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="p-0 h-8 w-8 rounded-full"
-              asChild
-            >
-              <Link href="/auth">
-                <ArrowLeft className="h-4 w-4" />
-                <span className="sr-only">Back to login</span>
+    <Layout showAuthButtons={false}>
+      <div className="min-h-[calc(100vh-4rem)] bg-background flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+        <Card className="w-full max-w-md shadow-lg border-border">
+          <CardHeader>
+            <div className="flex items-center mb-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="p-0 h-8 w-8 rounded-full"
+                asChild
+              >
+                <Link href="/auth">
+                  <ArrowLeft className="h-4 w-4" />
+                  <span className="sr-only">Back to login</span>
+                </Link>
+              </Button>
+            </div>
+            <CardTitle className="text-2xl font-bold">
+              {showOtpForm ? "Verify Your Identity" : "Forgot Your Password?"}
+            </CardTitle>
+            <CardDescription>
+              {showOtpForm
+                ? "We've sent a verification code to your email. Enter the code and create a new password."
+                : "Enter your email address and we'll send you a verification code to reset your password."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!showOtpForm ? (
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Email Address</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Enter your email address"
+                            type="email"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <Button
+                    type="submit"
+                    className="w-full"
+                    disabled={requestPasswordReset.isPending}
+                  >
+                    {requestPasswordReset.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      "Send Verification Code"
+                    )}
+                  </Button>
+                </form>
+              </Form>
+            ) : (
+              <Form {...otpForm}>
+                <form onSubmit={otpForm.handleSubmit(onOtpSubmit)} className="space-y-4">
+                  <FormField
+                    control={otpForm.control}
+                    name="otp"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Verification Code</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Enter 6-digit code"
+                            {...field}
+                            maxLength={6}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div className="text-sm text-center">
+                    {countdown > 0 ? (
+                      <p className="text-muted-foreground">
+                        Code expires in <span className="font-medium">{countdown}</span> seconds
+                      </p>
+                    ) : (
+                      <Button
+                        variant="link"
+                        className="p-0 h-auto text-primary"
+                        onClick={handleResendOtp}
+                        disabled={resendOtp.isPending}
+                      >
+                        {resendOtp.isPending ? (
+                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                        ) : (
+                          "Resend code"
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                  <FormField
+                    control={otpForm.control}
+                    name="password"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>New Password</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Create a new password"
+                            type="password"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={otpForm.control}
+                    name="confirmPassword"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Confirm New Password</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Confirm your new password"
+                            type="password"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <Button
+                    type="submit"
+                    className="w-full"
+                    disabled={resetPasswordWithOtp.isPending}
+                  >
+                    {resetPasswordWithOtp.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Resetting Password...
+                      </>
+                    ) : (
+                      "Reset Password"
+                    )}
+                  </Button>
+                </form>
+              </Form>
+            )}
+          </CardContent>
+          <CardFooter className="flex flex-col">
+            <div className="text-sm text-muted-foreground text-center">
+              Remembered your password?{" "}
+              <Link href="/auth" className="text-primary font-medium hover:underline">
+                Back to login
               </Link>
-            </Button>
-          </div>
-          <CardTitle className="text-2xl font-bold">
-            {showOtpForm ? "Verify Your Identity" : "Forgot Your Password?"}
-          </CardTitle>
-          <CardDescription>
-            {showOtpForm
-              ? "We've sent a verification code to your email. Enter the code and create a new password."
-              : "Enter your email address and we'll send you a verification code to reset your password."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {!showOtpForm ? (
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Email Address</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Enter your email address"
-                          type="email"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={requestPasswordReset.isPending}
-                >
-                  {requestPasswordReset.isPending ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Sending...
-                    </>
-                  ) : (
-                    "Send Verification Code"
-                  )}
-                </Button>
-              </form>
-            </Form>
-          ) : (
-            <Form {...otpForm}>
-              <form onSubmit={otpForm.handleSubmit(onOtpSubmit)} className="space-y-4">
-                <FormField
-                  control={otpForm.control}
-                  name="otp"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Verification Code</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Enter 6-digit code"
-                          {...field}
-                          maxLength={6}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <div className="text-sm text-center">
-                  {countdown > 0 ? (
-                    <p className="text-muted-foreground">
-                      Code expires in <span className="font-medium">{countdown}</span> seconds
-                    </p>
-                  ) : (
-                    <Button
-                      variant="link"
-                      className="p-0 h-auto text-primary"
-                      onClick={handleResendOtp}
-                      disabled={resendOtp.isPending}
-                    >
-                      {resendOtp.isPending ? (
-                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                      ) : (
-                        "Resend code"
-                      )}
-                    </Button>
-                  )}
-                </div>
-                <FormField
-                  control={otpForm.control}
-                  name="password"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>New Password</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Create a new password"
-                          type="password"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={otpForm.control}
-                  name="confirmPassword"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Confirm New Password</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Confirm your new password"
-                          type="password"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={resetPasswordWithOtp.isPending}
-                >
-                  {resetPasswordWithOtp.isPending ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Resetting Password...
-                    </>
-                  ) : (
-                    "Reset Password"
-                  )}
-                </Button>
-              </form>
-            </Form>
-          )}
-        </CardContent>
-        <CardFooter className="flex flex-col">
-          <div className="text-sm text-muted-foreground text-center">
-            Remembered your password?{" "}
-            <Link href="/auth" className="text-primary font-medium hover:underline">
-              Back to login
-            </Link>
-          </div>
-        </CardFooter>
-      </Card>
-    </div>
+            </div>
+          </CardFooter>
+        </Card>
+      </div>
+    </Layout>
   );
 }
