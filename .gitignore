@@ -38,4 +38,4 @@ replit.nix
 *.swo
 
 # Testing
-/coverage
+/coveragesendgrid.env
